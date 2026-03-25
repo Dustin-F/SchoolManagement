@@ -7,18 +7,12 @@ import {
   Clock,
   Plus,
   UserPlus,
-  ClipboardList,
-  Pencil,
-  Trash2,
   ChevronDown,
   Check,
   X,
-  Clock as ClockIcon,
   Shield,
   StickyNote,
   MoreHorizontal,
-  Archive,
-  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,14 +25,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -57,13 +43,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAppStore } from "@/store";
-import { cn, DAY_SHORT, DAY_ORDER, formatDate } from "@/lib/utils";
+import { cn, DAY_SHORT, DAY_ORDER } from "@/lib/utils";
 import {
   STUDENT_TASK_STATUS_ORDER,
   studentTaskStatusLabel,
   studentTaskStatusSelectClass,
 } from "@/lib/studentTaskStatus";
-import { deadlineDay, isTaskOverdue, taskProgressForEnrolled } from "@/lib/taskUtils";
+import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
 import { AddExistingStudentDialog } from "@/features/classes/AddExistingStudentDialog";
 import { StudentFormDialog } from "@/features/students/StudentFormDialog";
 import { ClassTaskFormDialog } from "@/features/tasks/ClassTaskFormDialog";
@@ -76,7 +62,6 @@ import type {
   AttendanceStatus,
   BehaviourRecord,
   ClassTask,
-  Student,
   StudentTaskRecord,
   StudentTaskStatus,
 } from "@/types";
