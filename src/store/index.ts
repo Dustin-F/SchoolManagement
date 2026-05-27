@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import { migrateStudentTaskRecordsCompletedField, storage } from "@/lib/storage";
+import { connectCloudPersistence, migrateStudentTaskRecordsCompletedField, storage } from "@/lib/storage";
 import type {
   Teacher,
   Student,
@@ -85,6 +85,16 @@ interface AppStore {
   unarchiveClassTask: (id: string) => void;
   updateStudentTaskRecord: (id: string, data: Partial<Omit<StudentTaskRecord, "id" | "taskId" | "studentId">>) => void;
 
+  hydrateFromCloud: (payload: Partial<{
+    teachers: Teacher[];
+    students: Student[];
+    classes: SchoolClass[];
+    subjects: Subject[];
+    attendance: AttendanceRecord[];
+    behaviour: BehaviourRecord[];
+    classTasks: ClassTask[];
+    studentTaskRecords: StudentTaskRecord[];
+  }>) => void;
   resetToSeed: () => void;
 }
 
@@ -396,6 +406,22 @@ export const useAppStore = create<AppStore>((set) => {
       });
     },
 
+    hydrateFromCloud: (payload) => {
+      set((state) => {
+        const next = {
+          teachers: payload.teachers ?? state.teachers,
+          students: payload.students ?? state.students,
+          classes: payload.classes ?? state.classes,
+          subjects: payload.subjects ?? state.subjects,
+          attendance: payload.attendance ?? state.attendance,
+          behaviour: payload.behaviour ?? state.behaviour,
+          classTasks: payload.classTasks ?? state.classTasks,
+          studentTaskRecords: payload.studentTaskRecords ?? state.studentTaskRecords,
+        };
+        return next;
+      });
+    },
+
     resetToSeed: () => {
       storage.clear();
       set({
@@ -409,5 +435,19 @@ export const useAppStore = create<AppStore>((set) => {
         studentTaskRecords: loadOrSeed("studentTaskRecords", seedStudentTaskRecords),
       });
     },
+  };
+});
+
+connectCloudPersistence(() => {
+  const s = useAppStore.getState();
+  return {
+    teachers: s.teachers,
+    students: s.students,
+    classes: s.classes,
+    subjects: s.subjects,
+    attendance: s.attendance,
+    behaviour: s.behaviour,
+    classTasks: s.classTasks,
+    studentTaskRecords: s.studentTaskRecords,
   };
 });

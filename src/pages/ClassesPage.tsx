@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ClassFormDialog } from "@/features/classes/ClassFormDialog";
 import { useAppStore } from "@/store";
+import { getTeacherDisplayName } from "@/lib/displayHelpers";
 import { formatScheduleSummary } from "@/lib/utils";
 import type { SchoolClass } from "@/types";
 
@@ -33,7 +34,7 @@ export function ClassesPage() {
 
   const getTeacherName = (id: string) => {
     const t = teachers.find((teacher) => teacher.id === id);
-    return t ? `${t.firstName} ${t.lastName}` : "Unassigned";
+    return t ? getTeacherDisplayName(t) : "Unassigned";
   };
 
   const getSubjectName = (id: string) => {
@@ -95,6 +96,7 @@ export function ClassesPage() {
                       {cls.name}
                     </h3>
                     <p className="mt-0.5 text-sm text-muted-foreground">
+                      {cls.classroomNumber ? `Room ${cls.classroomNumber} · ` : ""}
                       {getSubjectName(cls.subjectId)} &middot; {getTeacherName(cls.teacherId)}
                     </p>
                   </Link>

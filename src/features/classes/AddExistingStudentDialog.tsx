@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
+import { getStudentDisplayName } from "@/lib/displayHelpers";
 
 interface AddExistingStudentDialogProps {
   open: boolean;
@@ -71,7 +72,7 @@ export function AddExistingStudentDialog({
             <SelectContent>
               {available.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
-                  {s.firstName} {s.lastName}
+                  {getStudentDisplayName(s)}
                 </SelectItem>
               ))}
             </SelectContent>

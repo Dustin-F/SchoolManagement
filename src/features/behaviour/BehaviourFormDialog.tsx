@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { behaviourSchema, type BehaviourFormData } from "@/lib/schemas";
+import { getStudentDisplayName } from "@/lib/displayHelpers";
 import type { BehaviourRecord, BehaviourCategory, BehaviourSeverity } from "@/types";
 
 const categories: BehaviourCategory[] = ["academic", "conduct", "participation", "respect", "other"];
@@ -161,7 +162,7 @@ export function BehaviourFormDialog({
                 <SelectContent>
                   {students.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.firstName} {s.lastName}
+                      {getStudentDisplayName(s)}
                     </SelectItem>
                   ))}
                 </SelectContent>

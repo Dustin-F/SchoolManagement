@@ -29,7 +29,7 @@ import { useAppStore } from "@/store";
 import { usePagination } from "@/hooks/usePagination";
 import type { BehaviourRecord } from "@/types";
 import { formatDate } from "@/lib/utils";
-import { getStudentName, SEVERITY_BADGE_VARIANT } from "@/lib/displayHelpers";
+import { getStudentDisplayName, getStudentName, SEVERITY_BADGE_VARIANT } from "@/lib/displayHelpers";
 
 export function BehaviourPage() {
   const behaviour = useAppStore((s) => s.behaviour);
@@ -56,7 +56,7 @@ export function BehaviourPage() {
     return behaviour
       .filter((b) => {
         const student = students.find((s) => s.id === b.studentId);
-        const studentName = student ? `${student.firstName} ${student.lastName}` : "";
+        const studentName = student ? getStudentDisplayName(student) : "";
         const matchesSearch = search === "" || studentName.toLowerCase().includes(search.toLowerCase()) || b.description.toLowerCase().includes(search.toLowerCase());
         const matchesClass = classFilter === "all" || b.classId === classFilter;
         const matchesSeverity = severityFilter === "all" || b.severity === severityFilter;

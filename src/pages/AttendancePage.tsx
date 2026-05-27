@@ -27,7 +27,7 @@ import { useAppStore } from "@/store";
 import { usePagination } from "@/hooks/usePagination";
 import type { AttendanceStatus } from "@/types";
 import { formatDate } from "@/lib/utils";
-import { getStudentName } from "@/lib/displayHelpers";
+import { getStudentDisplayName, getStudentName } from "@/lib/displayHelpers";
 
 const statusConfig: Record<AttendanceStatus, { label: string; color: string; icon: React.ElementType }> = {
   present: { label: "Present", color: "bg-emerald-100 text-emerald-800", icon: Check },
@@ -192,7 +192,7 @@ export function AttendancePage() {
                       className="flex items-center justify-between rounded-lg border border-border p-3"
                     >
                       <span className="font-medium">
-                        {student.firstName} {student.lastName}
+                        {getStudentDisplayName(student)}
                       </span>
                       <div className="flex gap-1.5">
                         {statuses.map((status) => {

@@ -1,8 +1,44 @@
-import type { BehaviourSeverity, AttendanceStatus, Student } from "@/types";
+import type { BehaviourSeverity, AttendanceStatus, Student, Teacher } from "@/types";
+
+function compact(value?: string): string {
+  return (value ?? "").trim();
+}
+
+export function getStudentDisplayName(student: Student): string {
+  const english = `${compact(student.firstName)} ${compact(student.lastName)}`.trim();
+  if (english) return english;
+  if (compact(student.chineseName)) return compact(student.chineseName);
+  if (compact(student.pinyinName)) return compact(student.pinyinName);
+  return "Unnamed student";
+}
+
+export function getTeacherDisplayName(teacher: Teacher): string {
+  const english = `${compact(teacher.firstName)} ${compact(teacher.lastName)}`.trim();
+  if (english) return english;
+  if (compact(teacher.chineseName)) return compact(teacher.chineseName);
+  if (compact(teacher.pinyinName)) return compact(teacher.pinyinName);
+  return "Unnamed teacher";
+}
+
+export function getPersonInitials(person: {
+  firstName?: string;
+  lastName?: string;
+  chineseName?: string;
+  pinyinName?: string;
+}): string {
+  const first = compact(person.firstName);
+  const last = compact(person.lastName);
+  if (first || last) return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase() || "??";
+  const chinese = compact(person.chineseName);
+  if (chinese) return chinese.slice(0, 1);
+  const pinyin = compact(person.pinyinName);
+  if (pinyin) return pinyin.slice(0, 1).toUpperCase();
+  return "??";
+}
 
 export function getStudentName(id: string, students: Student[]): string {
   const s = students.find((st) => st.id === id);
-  return s ? `${s.firstName} ${s.lastName}` : "Unknown";
+  return s ? getStudentDisplayName(s) : "Unknown";
 }
 
 export const SEVERITY_BADGE_VARIANT: Record<

@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { teacherSchema, type TeacherFormData } from "@/lib/schemas";
+import { getTeacherDisplayName } from "@/lib/displayHelpers";
 import type { Teacher } from "@/types";
 
 interface TeacherFormDialogProps {
@@ -34,7 +35,7 @@ export function TeacherFormDialog({ open, onOpenChange, editingTeacher }: Teache
     formState: { errors },
   } = useForm<TeacherFormData>({
     resolver: zodResolver(teacherSchema),
-    defaultValues: { firstName: "", lastName: "", email: "", phone: "" },
+    defaultValues: { firstName: "", lastName: "", chineseName: "", pinyinName: "", email: "", phone: "" },
   });
 
   useEffect(() => {
@@ -42,21 +43,23 @@ export function TeacherFormDialog({ open, onOpenChange, editingTeacher }: Teache
       reset({
         firstName: editingTeacher.firstName,
         lastName: editingTeacher.lastName,
+        chineseName: editingTeacher.chineseName ?? "",
+        pinyinName: editingTeacher.pinyinName ?? "",
         email: editingTeacher.email,
         phone: editingTeacher.phone ?? "",
       });
     } else {
-      reset({ firstName: "", lastName: "", email: "", phone: "" });
+      reset({ firstName: "", lastName: "", chineseName: "", pinyinName: "", email: "", phone: "" });
     }
   }, [editingTeacher, reset]);
 
   const onSubmit = (data: TeacherFormData) => {
     if (editingTeacher) {
       updateTeacher(editingTeacher.id, data);
-      toast.success(`${data.firstName} ${data.lastName} updated.`);
+      toast.success(`${getTeacherDisplayName({ ...editingTeacher, ...data })} updated.`);
     } else {
       addTeacher({ ...data, subjects: [] });
-      toast.success(`${data.firstName} ${data.lastName} added.`);
+      toast.success(`${getTeacherDisplayName({ ...data, id: "", createdAt: "", updatedAt: "" })} added.`);
     }
     onOpenChange(false);
     reset();
@@ -73,16 +76,27 @@ export function TeacherFormDialog({ open, onOpenChange, editingTeacher }: Teache
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
+              <Label htmlFor="firstName">English First Name (optional)</Label>
               <Input id="firstName" placeholder="Sarah" {...register("firstName")} />
               {errors.firstName && <p className="text-xs text-destructive">{errors.firstName.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
+              <Label htmlFor="lastName">English Last Name (optional)</Label>
               <Input id="lastName" placeholder="Johnson" {...register("lastName")} />
               {errors.lastName && <p className="text-xs text-destructive">{errors.lastName.message}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="chineseName">Chinese Name (optional)</Label>
+              <Input id="chineseName" placeholder="张老师" {...register("chineseName")} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pinyinName">Pinyin Name (optional)</Label>
+              <Input id="pinyinName" placeholder="Zhang Laoshi" {...register("pinyinName")} />
             </div>
           </div>
 

@@ -14,6 +14,7 @@ const scheduleEntrySchema = z
 
 export const classSchema = z.object({
   name: z.string().min(1, "Class name is required"),
+  classroomNumber: z.string().optional(),
   subjectId: z.string().min(1, "Subject is required"),
   teacherId: z.string().min(1, "A main teacher is required"),
   coTeacherIds: z.array(z.string()),
@@ -22,23 +23,53 @@ export const classSchema = z.object({
 });
 export type ClassFormData = z.infer<typeof classSchema>;
 
-export const studentSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Invalid email").or(z.literal("")).optional(),
-  dateOfBirth: z.string().optional(),
-  parentName: z.string().optional(),
-  parentPhone: z.string().optional(),
-  notes: z.string().optional(),
-});
+export const studentSchema = z
+  .object({
+    firstName: z.string(),
+    lastName: z.string(),
+    chineseName: z.string().optional(),
+    pinyinName: z.string().optional(),
+    email: z.string().email("Invalid email").or(z.literal("")).optional(),
+    dateOfBirth: z.string().optional(),
+    parentName: z.string().optional(),
+    parentPhone: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasEnglish = `${data.firstName} ${data.lastName}`.trim().length > 0;
+    const hasChinese = (data.chineseName ?? "").trim().length > 0;
+    const hasPinyin = (data.pinyinName ?? "").trim().length > 0;
+    if (!hasEnglish && !hasChinese && !hasPinyin) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["firstName"],
+        message: "Add at least one name: English, Chinese, or Pinyin.",
+      });
+    }
+  });
 export type StudentFormData = z.infer<typeof studentSchema>;
 
-export const teacherSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Invalid email").or(z.literal("")).optional(),
-  phone: z.string().optional(),
-});
+export const teacherSchema = z
+  .object({
+    firstName: z.string(),
+    lastName: z.string(),
+    chineseName: z.string().optional(),
+    pinyinName: z.string().optional(),
+    email: z.string().email("Invalid email").or(z.literal("")).optional(),
+    phone: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasEnglish = `${data.firstName} ${data.lastName}`.trim().length > 0;
+    const hasChinese = (data.chineseName ?? "").trim().length > 0;
+    const hasPinyin = (data.pinyinName ?? "").trim().length > 0;
+    if (!hasEnglish && !hasChinese && !hasPinyin) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["firstName"],
+        message: "Add at least one name: English, Chinese, or Pinyin.",
+      });
+    }
+  });
 export type TeacherFormData = z.infer<typeof teacherSchema>;
 
 export const subjectSchema = z.object({

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TeacherFormDialog } from "@/features/teachers/TeacherFormDialog";
 import { useAppStore } from "@/store";
+import { getPersonInitials, getTeacherDisplayName } from "@/lib/displayHelpers";
 import type { Teacher } from "@/types";
 
 export function TeachersPage() {
@@ -33,7 +34,9 @@ export function TeachersPage() {
   const filtered = useMemo(() => {
     if (search === "") return teachers;
     return teachers.filter((t) =>
-      `${t.firstName} ${t.lastName} ${t.email}`.toLowerCase().includes(search.toLowerCase())
+      `${getTeacherDisplayName(t)} ${t.chineseName ?? ""} ${t.pinyinName ?? ""} ${t.email ?? ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
   }, [teachers, search]);
 
@@ -51,7 +54,7 @@ export function TeachersPage() {
   const handleDelete = () => {
     if (deleteTarget) {
       deleteTeacher(deleteTarget.id);
-      toast.success(`${deleteTarget.firstName} ${deleteTarget.lastName} has been removed.`);
+      toast.success(`${getTeacherDisplayName(deleteTarget)} has been removed.`);
       setDeleteTarget(null);
     }
   };
@@ -113,12 +116,19 @@ export function TeachersPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                            {teacher.firstName[0]}{teacher.lastName[0]}
+                            {getPersonInitials(teacher)}
                           </div>
                           <div>
                             <h3 className="font-semibold text-foreground">
-                              {teacher.firstName} {teacher.lastName}
+                              {getTeacherDisplayName(teacher)}
                             </h3>
+                            {(teacher.chineseName || teacher.pinyinName) && (
+                              <p className="text-xs text-muted-foreground">
+                                {teacher.chineseName ? `中文: ${teacher.chineseName}` : ""}
+                                {teacher.chineseName && teacher.pinyinName ? " · " : ""}
+                                {teacher.pinyinName ? `Pinyin: ${teacher.pinyinName}` : ""}
+                              </p>
+                            )}
                             {teacher.email && <p className="text-sm text-muted-foreground">{teacher.email}</p>}
                           </div>
                         </div>
@@ -167,7 +177,7 @@ export function TeachersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Teacher</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove {deleteTarget?.firstName} {deleteTarget?.lastName}? This cannot be undone.
+              Are you sure you want to remove {deleteTarget ? getTeacherDisplayName(deleteTarget) : "this teacher"}? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

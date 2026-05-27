@@ -17,6 +17,7 @@ import { CheckboxList } from "@/components/CheckboxList";
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { studentSchema, type StudentFormData } from "@/lib/schemas";
+import { findDuplicateStudent } from "@/lib/studentIdentity";
 import type { Student } from "@/types";
 
 interface StudentFormDialogProps {
@@ -40,6 +41,7 @@ export function StudentFormDialog({
   const addStudent = useAppStore((s) => s.addStudent);
   const updateStudent = useAppStore((s) => s.updateStudent);
   const setStudentEnrollment = useAppStore((s) => s.setStudentEnrollment);
+  const students = useAppStore((s) => s.students);
 
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
 
@@ -56,6 +58,8 @@ export function StudentFormDialog({
     defaultValues: {
       firstName: "",
       lastName: "",
+      chineseName: "",
+      pinyinName: "",
       email: "",
       dateOfBirth: "",
       parentName: "",
@@ -69,6 +73,8 @@ export function StudentFormDialog({
       reset({
         firstName: editingStudent.firstName,
         lastName: editingStudent.lastName,
+        chineseName: editingStudent.chineseName ?? "",
+        pinyinName: editingStudent.pinyinName ?? "",
         email: editingStudent.email ?? "",
         dateOfBirth: editingStudent.dateOfBirth ?? "",
         parentName: editingStudent.parentName ?? "",
@@ -81,6 +87,8 @@ export function StudentFormDialog({
       reset({
         firstName: "",
         lastName: "",
+        chineseName: "",
+        pinyinName: "",
         email: "",
         dateOfBirth: "",
         parentName: "",
@@ -97,14 +105,29 @@ export function StudentFormDialog({
   const onSubmit = (data: StudentFormData) => {
     const enrollment =
       !editingStudent && lockEnrollment ? [...defaultClassIds] : selectedClassIds;
+    const duplicate = findDuplicateStudent(data, students, editingStudent?.id);
+    if (duplicate) {
+      const duplicateName = [duplicate.firstName, duplicate.lastName].filter(Boolean).join(" ")
+        || duplicate.chineseName
+        || duplicate.pinyinName
+        || "existing student";
+      toast.error(
+        `Possible duplicate found: ${duplicateName}.`
+      );
+      return;
+    }
     if (editingStudent) {
       updateStudent(editingStudent.id, data);
       setStudentEnrollment(editingStudent.id, selectedClassIds);
-      toast.success(`${data.firstName} ${data.lastName} updated.`);
+      const updatedName =
+        `${data.firstName} ${data.lastName}`.trim() || data.chineseName || data.pinyinName || "Student";
+      toast.success(`${updatedName} updated.`);
     } else {
       const newId = addStudent(data);
       setStudentEnrollment(newId, enrollment);
-      toast.success(`${data.firstName} ${data.lastName} added.`);
+      const createdName =
+        `${data.firstName} ${data.lastName}`.trim() || data.chineseName || data.pinyinName || "Student";
+      toast.success(`${createdName} added.`);
     }
     onOpenChange(false);
     reset();
@@ -127,14 +150,27 @@ export function StudentFormDialog({
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
+              <Label htmlFor="firstName">English First Name (optional)</Label>
               <Input id="firstName" placeholder="John" {...register("firstName")} />
               {errors.firstName && <p className="text-xs text-destructive">{errors.firstName.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
+              <Label htmlFor="lastName">English Last Name (optional)</Label>
               <Input id="lastName" placeholder="Doe" {...register("lastName")} />
               {errors.lastName && <p className="text-xs text-destructive">{errors.lastName.message}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="chineseName">Chinese Name (optional)</Label>
+              <Input id="chineseName" placeholder="王小明" {...register("chineseName")} />
+              {errors.chineseName && <p className="text-xs text-destructive">{errors.chineseName.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pinyinName">Pinyin Name (optional)</Label>
+              <Input id="pinyinName" placeholder="Wang Xiaoming" {...register("pinyinName")} />
+              {errors.pinyinName && <p className="text-xs text-destructive">{errors.pinyinName.message}</p>}
             </div>
           </div>
 

@@ -25,6 +25,7 @@ import { CheckboxList } from "@/components/CheckboxList";
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { classSchema, type ClassFormData } from "@/lib/schemas";
+import { getStudentDisplayName, getTeacherDisplayName } from "@/lib/displayHelpers";
 import { DAY_ORDER } from "@/lib/utils";
 import type { SchoolClass, DayOfWeek } from "@/types";
 
@@ -61,6 +62,7 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
     resolver: zodResolver(classSchema),
     defaultValues: {
       name: "",
+      classroomNumber: "",
       subjectId: "",
       teacherId: "",
       coTeacherIds: [],
@@ -76,6 +78,7 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
     if (editingClass) {
       reset({
         name: editingClass.name,
+        classroomNumber: editingClass.classroomNumber ?? "",
         subjectId: editingClass.subjectId,
         teacherId: editingClass.teacherId,
         coTeacherIds: editingClass.coTeacherIds,
@@ -88,6 +91,7 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
     } else {
       reset({
         name: "",
+        classroomNumber: "",
         subjectId: "",
         teacherId: "",
         coTeacherIds: [],
@@ -119,11 +123,15 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
   const availableCoTeachers = teachers.filter((t) => t.id !== teacherIdValue);
 
   const onSubmit = (data: ClassFormData) => {
+    const payload = {
+      ...data,
+      classroomNumber: data.classroomNumber?.trim() || undefined,
+    };
     if (editingClass) {
-      updateClass(editingClass.id, data);
+      updateClass(editingClass.id, payload);
       toast.success(`"${data.name}" updated.`);
     } else {
-      addClass(data);
+      addClass(payload);
       toast.success(`"${data.name}" created.`);
     }
     onOpenChange(false);
@@ -141,10 +149,15 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="name">Class Name</Label>
               <Input id="name" placeholder="e.g. Grade10-A IELTS" {...register("name")} />
               {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="classroomNumber">Classroom Number</Label>
+              <Input id="classroomNumber" placeholder="e.g. 101, A-203" {...register("classroomNumber")} />
             </div>
 
             <div className="space-y-2">
@@ -166,7 +179,7 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
                 <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
                 <SelectContent>
                   {teachers.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.firstName} {t.lastName}</SelectItem>
+                    <SelectItem key={t.id} value={t.id}>{getTeacherDisplayName(t)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -178,7 +191,7 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
             <div className="space-y-2">
               <Label>Co-Teachers <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <CheckboxList
-                items={availableCoTeachers.map((t) => ({ id: t.id, label: `${t.firstName} ${t.lastName}` }))}
+                items={availableCoTeachers.map((t) => ({ id: t.id, label: getTeacherDisplayName(t) }))}
                 selectedIds={coTeacherIds}
                 onToggle={toggleCoTeacher}
                 maxHeight="7rem"
@@ -190,7 +203,7 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
           <div className="space-y-2">
             <Label>Enrolled Students <span className="text-muted-foreground font-normal">(optional)</span></Label>
             <CheckboxList
-              items={students.map((s) => ({ id: s.id, label: `${s.firstName} ${s.lastName}` }))}
+              items={students.map((s) => ({ id: s.id, label: getStudentDisplayName(s) }))}
               selectedIds={studentIds}
               onToggle={toggleStudent}
               maxHeight="10rem"

@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { getStudentDisplayName } from "@/lib/displayHelpers";
 import { STUDENT_TASK_STATUS_ORDER, studentTaskStatusLabel, studentTaskStatusSelectClass } from "@/lib/studentTaskStatus";
 import { isTaskOverdue } from "@/lib/taskUtils";
 
@@ -51,7 +52,6 @@ interface StudentRosterTableProps {
   students: Student[];
   activeTasks: ClassTask[];
   studentTaskRecords: StudentTaskRecord[];
-  attendanceDate: string;
   dayAttendanceRows: AttendanceRecord[];
   behaviourNoteCountByStudent: Map<string, number>;
   onMarkAttendance: (studentId: string, status: AttendanceStatus) => void;
@@ -60,7 +60,6 @@ interface StudentRosterTableProps {
   onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
   onOpenBehaviourList: (studentId: string) => void;
   archivedTaskCount: number;
-  classId: string;
 }
 
 export function StudentRosterTable({
@@ -165,7 +164,7 @@ export function StudentRosterTable({
               >
                 <SelectTrigger
                   className={cn(
-                    "h-8 w-[9.25rem] shrink-0 text-xs",
+                    "h-8 w-37 shrink-0 text-xs",
                     studentTaskStatusSelectClass(rec.status)
                   )}
                 >
@@ -263,7 +262,7 @@ export function StudentRosterTable({
           >
             <SelectTrigger
               className={cn(
-                "h-8 w-[9.25rem] shrink-0 text-xs",
+                "h-8 w-37 shrink-0 text-xs",
                 studentTaskStatusSelectClass(rec.status)
               )}
             >
@@ -329,7 +328,7 @@ export function StudentRosterTable({
                             to={`/students/${student.id}`}
                             className="font-semibold text-foreground hover:text-primary"
                           >
-                            {student.firstName} {student.lastName}
+                            {getStudentDisplayName(student)}
                           </Link>
                           {student.parentPhone && (
                             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -382,7 +381,7 @@ export function StudentRosterTable({
                         to={`/students/${student.id}`}
                         className="font-semibold text-foreground hover:text-primary transition-colors"
                       >
-                        {student.firstName} {student.lastName}
+                        {getStudentDisplayName(student)}
                       </Link>
                       {student.parentPhone && (
                         <p className="mt-0.5 text-xs text-muted-foreground">

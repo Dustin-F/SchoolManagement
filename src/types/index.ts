@@ -8,6 +8,8 @@ export interface BaseEntity {
 export interface Teacher extends BaseEntity {
   firstName: string;
   lastName: string;
+  chineseName?: string;
+  pinyinName?: string;
   email?: string;
   phone?: string;
   subjects?: string[];
@@ -16,6 +18,8 @@ export interface Teacher extends BaseEntity {
 export interface Student extends BaseEntity {
   firstName: string;
   lastName: string;
+  chineseName?: string;
+  pinyinName?: string;
   email?: string;
   dateOfBirth?: string;
   parentName?: string;
@@ -41,6 +45,7 @@ export interface ScheduleEntry {
 
 export interface SchoolClass extends BaseEntity {
   name: string;
+  classroomNumber?: string;
   subjectId: string;
   teacherId: string;
   coTeacherIds: string[];

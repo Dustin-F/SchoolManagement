@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Pencil, Trash2, Users, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -34,18 +34,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { StudentFormDialog } from "@/features/students/StudentFormDialog";
+import { StudentImportDialog } from "@/features/students/StudentImportDialog";
 import { useAppStore } from "@/store";
+import { getStudentDisplayName } from "@/lib/displayHelpers";
 import type { Student } from "@/types";
 
 export function StudentsPage() {
+  const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
   const students = useAppStore((s) => s.students);
   const classes = useAppStore((s) => s.classes);
   const deleteStudent = useAppStore((s) => s.deleteStudent);
   const [formOpen, setFormOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("all");
+  const [pageSize, setPageSize] = useState("25");
 
   const getStudentClasses = (studentId: string) =>
     classes.filter((c) => c.studentIds.includes(studentId));
@@ -54,7 +59,9 @@ export function StudentsPage() {
     return students.filter((s) => {
       const matchesSearch =
         search === "" ||
-        `${s.firstName} ${s.lastName}`.toLowerCase().includes(search.toLowerCase());
+        `${getStudentDisplayName(s)} ${s.chineseName ?? ""} ${s.pinyinName ?? ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase());
       const matchesClass =
         classFilter === "all" ||
         classes.some((c) => c.id === classFilter && c.studentIds.includes(s.id));
@@ -62,9 +69,12 @@ export function StudentsPage() {
     });
   }, [students, classes, search, classFilter]);
 
-  const { paginated, page, setPage, totalPages, reset: resetPage } = usePagination(filtered, 20);
+  const { paginated, page, setPage, totalPages, reset: resetPage } = usePagination(
+    filtered,
+    Number(pageSize)
+  );
 
-  useEffect(() => { resetPage(); }, [search, classFilter]);
+  useEffect(() => { resetPage(); }, [search, classFilter, pageSize]);
 
   const handleEdit = (student: Student) => {
     setEditingStudent(student);
@@ -74,7 +84,7 @@ export function StudentsPage() {
   const handleDelete = () => {
     if (deleteTarget) {
       deleteStudent(deleteTarget.id);
-      toast.success(`${deleteTarget.firstName} ${deleteTarget.lastName} has been removed.`);
+      toast.success(`${getStudentDisplayName(deleteTarget)} has been removed.`);
       setDeleteTarget(null);
     }
   };
@@ -90,10 +100,16 @@ export function StudentsPage() {
         title="Students"
         description={`${students.length} student${students.length !== 1 ? "s" : ""} total`}
         actions={
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Student
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import Excel
+            </Button>
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Student
+            </Button>
+          </div>
         }
       />
 
@@ -162,8 +178,15 @@ export function StudentsPage() {
                             to={`/students/${student.id}`}
                             className="font-medium text-foreground hover:text-primary transition-colors"
                           >
-                            {student.firstName} {student.lastName}
+                            {getStudentDisplayName(student)}
                           </Link>
+                          {(student.chineseName || student.pinyinName) && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {student.chineseName ? `中文: ${student.chineseName}` : ""}
+                              {student.chineseName && student.pinyinName ? " · " : ""}
+                              {student.pinyinName ? `Pinyin: ${student.pinyinName}` : ""}
+                            </p>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
@@ -200,10 +223,51 @@ export function StudentsPage() {
 
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between">
-              <span className="hidden sm:inline text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:inline text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+                <span className="hidden sm:inline text-sm text-muted-foreground">
+                  · {filtered.length} result{filtered.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={pageSize} onValueChange={setPageSize}>
+                  <SelectTrigger className="h-9 w-[110px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={String(size)}>
+                        {size} / page
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
+                  <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {totalPages <= 1 && filtered.length > 0 && (
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Select value={pageSize} onValueChange={setPageSize}>
+                <SelectTrigger className="h-9 w-[110px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size} / page
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
-                <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
+                <span className="text-sm text-muted-foreground">
+                  {filtered.length} result{filtered.length !== 1 ? "s" : ""}
+                </span>
               </div>
             </div>
           )}
@@ -211,13 +275,14 @@ export function StudentsPage() {
       )}
 
       <StudentFormDialog open={formOpen} onOpenChange={handleDialogClose} editingStudent={editingStudent} />
+      <StudentImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Student</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove {deleteTarget?.firstName} {deleteTarget?.lastName}? This cannot be undone.
+              Are you sure you want to remove {deleteTarget ? getStudentDisplayName(deleteTarget) : "this student"}? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

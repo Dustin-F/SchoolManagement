@@ -1,35 +1,240 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-background: #ffffff;
-  --color-foreground: #0f172a;
-  --color-muted: #f1f5f9;
-  --color-muted-foreground: #64748b;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #0f172a;
-  --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
-  --color-border: #e2e8f0;
-  --color-input: #e2e8f0;
-  --color-primary: #2563eb;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
-  --color-accent: #f1f5f9;
-  --color-accent-foreground: #0f172a;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #ffffff;
-  --color-ring: #2563eb;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
   --radius: 0.5rem;
 
-  --color-sidebar: #f8fafc;
-  --color-sidebar-foreground: #334155;
-  --color-sidebar-border: #e2e8f0;
-  --color-sidebar-accent: #2563eb;
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --ring: #2563eb;
+  --sidebar: #f8fafc;
+  --sidebar-foreground: #334155;
+  --sidebar-border: #e2e8f0;
+  --sidebar-accent: #2563eb;
+}
+
+.dark {
+  --background: #02040a;
+  --foreground: #f1f5f9;
+  --muted: #070b14;
+  --muted-foreground: #a3b0c2;
+  --popover: #04070f;
+  --popover-foreground: #f1f5f9;
+  --card: #050913;
+  --card-foreground: #f1f5f9;
+  --border: #111827;
+  --input: #111827;
+  --primary: #4f8cff;
+  --primary-foreground: #ffffff;
+  --secondary: #0b1220;
+  --secondary-foreground: #e5edf8;
+  --accent: #0b1220;
+  --accent-foreground: #e5edf8;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --ring: #4f8cff;
+  --sidebar: #030712;
+  --sidebar-foreground: #dbe7f7;
+  --sidebar-border: #111827;
+  --sidebar-accent: #4f8cff;
 }
 
 @layer base {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Dashboard FullCalendar — match app light/dark theme */
+.dashboard-calendar .fc {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: var(--card);
+  --fc-neutral-bg-color: var(--muted);
+  --fc-neutral-text-color: var(--foreground);
+  --fc-button-bg-color: var(--secondary);
+  --fc-button-border-color: var(--border);
+  --fc-button-text-color: var(--foreground);
+  --fc-button-hover-bg-color: var(--accent);
+  --fc-button-hover-border-color: var(--border);
+  --fc-button-hover-text-color: var(--foreground);
+  --fc-button-active-bg-color: var(--primary);
+  --fc-button-active-border-color: var(--primary);
+  --fc-button-active-text-color: var(--primary-foreground);
+  --fc-event-bg-color: var(--primary);
+  --fc-event-border-color: var(--primary);
+  --fc-event-text-color: var(--primary-foreground);
+  --fc-today-bg-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  --fc-now-indicator-color: var(--primary);
+  color: var(--foreground);
+}
+
+.dashboard-calendar .fc .fc-toolbar-title {
+  color: var(--foreground);
+}
+
+.dashboard-calendar .fc .fc-col-header-cell {
+  background: var(--muted);
+}
+
+.dashboard-calendar .fc .fc-col-header-cell-cushion,
+.dashboard-calendar .fc .fc-col-header-cell a {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.dashboard-calendar .fc .fc-scrollgrid,
+.dashboard-calendar .fc .fc-scrollgrid-section > * {
+  background: var(--card);
+}
+
+.dashboard-calendar .fc th,
+.dashboard-calendar .fc td {
+  border-color: var(--border);
+}
+
+.dashboard-calendar .fc .fc-timegrid-slot-label-cushion,
+.dashboard-calendar .fc .fc-timegrid-axis-cushion,
+.dashboard-calendar .fc .fc-daygrid-day-number,
+.dashboard-calendar .fc .fc-list-day-text,
+.dashboard-calendar .fc .fc-list-day-side-text {
+  color: var(--muted-foreground);
+}
+
+.dashboard-calendar .fc .fc-day-today .fc-col-header-cell-cushion {
+  color: var(--primary);
+}
+
+.dashboard-calendar .fc .fc-button {
+  border-radius: var(--radius);
+}
+
+.dashboard-calendar .fc .fc-button-primary:not(:disabled).fc-button-active,
+.dashboard-calendar .fc .fc-button-primary:not(:disabled):active {
+  color: var(--primary-foreground);
+}
+
+/* Taller time slots so event blocks have more room */
+.dashboard-calendar .fc .fc-timegrid-slot {
+  height: 3.25rem;
+}
+
+.dashboard-calendar .fc .fc-timegrid-slot-label {
+  vertical-align: middle;
+}
+
+/* Dashboard class calendar — stacked labels, full text visible */
+.fc-school-event {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 1px;
+  width: 100%;
+  min-height: 100%;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+}
+
+.fc-school-event__class {
+  font-weight: 600;
+  line-height: 1.25;
+  font-size: 0.8rem;
+}
+
+.fc-school-event__line {
+  font-weight: 400;
+  font-size: 0.7rem;
+  opacity: 0.95;
+}
+
+.fc-school-event__time {
+  font-weight: 500;
+  opacity: 1;
+}
+
+.dashboard-calendar .fc .fc-timegrid-event .fc-event-main,
+.dashboard-calendar .fc .fc-daygrid-event .fc-event-main {
+  padding: 0;
+  height: auto;
+  min-height: 100%;
+}
+
+.dashboard-calendar .fc .fc-timegrid-event .fc-event-main-frame,
+.dashboard-calendar .fc .fc-daygrid-event .fc-event-main-frame {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
+.dashboard-calendar .fc .fc-timegrid-event,
+.dashboard-calendar .fc .fc-timegrid-event-harness {
+  overflow: visible !important;
+}
+
+.dashboard-calendar .fc .fc-daygrid-block-event {
+  overflow: visible;
+}
+
+.dashboard-calendar .fc .fc-timegrid-event {
+  min-height: 3.75rem;
+}
+
+.dashboard-calendar .fc .fc-timegrid-col-events {
+  margin: 0 2px;
+}
+
+/* Month view: allow multi-line event chips */
+.dashboard-calendar .fc .fc-daygrid-event {
+  overflow: visible;
+  white-space: normal;
+}
+
+.dashboard-calendar .fc .fc-daygrid-event .fc-event-title {
+  white-space: normal;
 }

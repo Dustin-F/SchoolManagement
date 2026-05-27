@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { useAppStore } from "@/store";
 import { cn, formatDate } from "@/lib/utils";
-import { ATTENDANCE_STATUS_COLORS, SEVERITY_BADGE_VARIANT } from "@/lib/displayHelpers";
+import { ATTENDANCE_STATUS_COLORS, SEVERITY_BADGE_VARIANT, getStudentDisplayName } from "@/lib/displayHelpers";
 import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
 import { studentTaskStatusBadgeClass, studentTaskStatusLabel } from "@/lib/studentTaskStatus";
 
@@ -106,7 +106,14 @@ export function StudentDetailPage() {
           <Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button>
         </Link>
         <div>
-          <h2 className="text-2xl font-bold">{student.firstName} {student.lastName}</h2>
+          <h2 className="text-2xl font-bold">{getStudentDisplayName(student)}</h2>
+          {(student.chineseName || student.pinyinName) && (
+            <p className="text-sm text-muted-foreground">
+              {student.chineseName ? `中文: ${student.chineseName}` : ""}
+              {student.chineseName && student.pinyinName ? " · " : ""}
+              {student.pinyinName ? `Pinyin: ${student.pinyinName}` : ""}
+            </p>
+          )}
           {enrolledClasses.length > 0 && (
             <p className="text-sm text-muted-foreground">
               {enrolledClasses.map((c) => c.name).join(", ")}
@@ -123,9 +130,21 @@ export function StudentDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
+            {student.firstName || student.lastName ? (
+              <p>
+                English: {[student.firstName, student.lastName].filter(Boolean).join(" ")}
+              </p>
+            ) : null}
+            {student.chineseName && <p>Chinese: {student.chineseName}</p>}
+            {student.pinyinName && <p>Pinyin: {student.pinyinName}</p>}
             {student.dateOfBirth && <p>Born: {formatDate(student.dateOfBirth)}</p>}
             {student.email && <p>{student.email}</p>}
-            {!student.dateOfBirth && !student.email && <p className="text-muted-foreground">No extra info</p>}
+            {!student.firstName &&
+              !student.lastName &&
+              !student.chineseName &&
+              !student.pinyinName &&
+              !student.dateOfBirth &&
+              !student.email && <p className="text-muted-foreground">No extra info</p>}
           </CardContent>
         </Card>
 
