@@ -53,7 +53,8 @@ const pageTitles: Record<string, string> = {
   "/teachers": "Teachers",
   "/subjects": "Subjects",
   "/attendance": "Attendance",
-  "/behaviour": "Behaviour",
+  "/points": "Points",
+  "/behaviour": "Points",
 };
 
 interface HeaderProps {
@@ -250,7 +251,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               <AlertDialogTitle>Load demo data?</AlertDialogTitle>
               <AlertDialogDescription>
                 This replaces all your current school data with sample teachers, students, classes,
-                attendance, behaviour notes, and tasks. Your cloud data will be overwritten after
+                attendance, points, and tasks. Your cloud data will be overwritten after
                 sync.
               </AlertDialogDescription>
             </AlertDialogHeader>

@@ -5,7 +5,7 @@ import {
   GraduationCap,
   BookOpen,
   ClipboardList,
-  AlertTriangle,
+  Sparkles,
   School,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ const navItems = [
   { to: "/teachers", label: "Teachers", icon: GraduationCap },
   { to: "/subjects", label: "Subjects", icon: BookOpen },
   { to: "/attendance", label: "Attendance", icon: ClipboardList },
-  { to: "/behaviour", label: "Behaviour", icon: AlertTriangle },
+  { to: "/points", label: "Points", icon: Sparkles },
 ];
 
 interface SidebarProps {

@@ -6,11 +6,10 @@ import {
   Shield,
   X,
   MoreHorizontal,
-  StickyNote,
+  Sparkles,
 } from "lucide-react";
 import type { AttendanceRecord, AttendanceStatus, ClassTask, Student, StudentTaskRecord, StudentTaskStatus } from "@/types";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -53,12 +52,11 @@ interface StudentRosterTableProps {
   activeTasks: ClassTask[];
   studentTaskRecords: StudentTaskRecord[];
   dayAttendanceRows: AttendanceRecord[];
-  behaviourNoteCountByStudent: Map<string, number>;
+  pointsTodayByStudent: Map<string, number>;
   onMarkAttendance: (studentId: string, status: AttendanceStatus) => void;
   onTaskStatusChange: (recordId: string, status: StudentTaskStatus) => void;
   onTaskScoreBlur: (record: StudentTaskRecord, raw: string) => void;
   onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
-  onOpenBehaviourList: (studentId: string) => void;
   archivedTaskCount: number;
 }
 
@@ -67,12 +65,11 @@ export function StudentRosterTable({
   activeTasks,
   studentTaskRecords,
   dayAttendanceRows,
-  behaviourNoteCountByStudent,
+  pointsTodayByStudent,
   onMarkAttendance,
   onTaskStatusChange,
   onTaskScoreBlur,
   onOpenProgress,
-  onOpenBehaviourList,
   archivedTaskCount,
 }: StudentRosterTableProps) {
   const todayStr = new Date().toISOString().split("T")[0];
@@ -315,12 +312,12 @@ export function StudentRosterTable({
                     <TableHead className="min-w-[140px] whitespace-nowrap">Student</TableHead>
                     <TableHead className="min-w-[200px] whitespace-nowrap">Attendance</TableHead>
                     <TableHead className="min-w-[280px]">Tasks</TableHead>
-                    <TableHead className="min-w-[108px] whitespace-nowrap">Notes</TableHead>
+                    <TableHead className="min-w-[88px] whitespace-nowrap text-right">Today</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {students.map((student) => {
-                    const noteCount = behaviourNoteCountByStudent.get(student.id) ?? 0;
+                    const pts = pointsTodayByStudent.get(student.id) ?? 0;
                     return (
                       <TableRow key={student.id} className="align-top">
                         <TableCell>
@@ -338,26 +335,18 @@ export function StudentRosterTable({
                         </TableCell>
                         <TableCell>{renderAttendanceCell(student)}</TableCell>
                         <TableCell>{renderTaskControls(student)}</TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 px-2.5"
-                            onClick={() => onOpenBehaviourList(student.id)}
-                            title="View notes for this class or add a new one"
-                          >
-                            <StickyNote className="h-3.5 w-3.5 shrink-0" />
-                            <span>Notes</span>
-                            {noteCount > 0 && (
-                              <Badge
-                                variant="secondary"
-                                className="rounded-sm px-1.5 text-[10px] tabular-nums"
-                              >
-                                {noteCount}
-                              </Badge>
+                        <TableCell className="text-right">
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 text-sm font-semibold tabular-nums",
+                              pts > 0 && "text-emerald-600",
+                              pts < 0 && "text-amber-600",
+                              pts === 0 && "text-muted-foreground"
                             )}
-                          </Button>
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            {pts > 0 ? `+${pts}` : pts}
+                          </span>
                         </TableCell>
                       </TableRow>
                     );
@@ -369,7 +358,7 @@ export function StudentRosterTable({
 
           <div className="md:hidden space-y-3">
             {students.map((student) => {
-              const noteCount = behaviourNoteCountByStudent.get(student.id) ?? 0;
+              const pts = pointsTodayByStudent.get(student.id) ?? 0;
               return (
                 <div
                   key={student.id}
@@ -390,25 +379,17 @@ export function StudentRosterTable({
                       )}
                     </div>
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 gap-1.5 px-2.5 shrink-0"
-                      onClick={() => onOpenBehaviourList(student.id)}
-                      title="View notes for this class or add a new one"
-                    >
-                      <StickyNote className="h-3.5 w-3.5 shrink-0" />
-                      <span className="text-sm">Notes</span>
-                      {noteCount > 0 && (
-                        <Badge
-                          variant="secondary"
-                          className="rounded-sm px-1.5 text-[10px] tabular-nums"
-                        >
-                          {noteCount}
-                        </Badge>
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-sm font-semibold tabular-nums",
+                        pts > 0 && "text-emerald-600",
+                        pts < 0 && "text-amber-600",
+                        pts === 0 && "text-muted-foreground"
                       )}
-                    </Button>
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {pts > 0 ? `+${pts}` : pts}
+                    </span>
                   </div>
 
                   <div className="space-y-1.5">

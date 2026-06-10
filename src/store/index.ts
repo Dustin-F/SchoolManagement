@@ -7,7 +7,8 @@ import type {
   SchoolClass,
   Subject,
   AttendanceRecord,
-  BehaviourRecord,
+  BehaviourSkill,
+  PointEvent,
   ClassTask,
   StudentTaskRecord,
 } from "@/types";
@@ -17,7 +18,8 @@ import {
   seedClasses,
   seedSubjects,
   seedAttendance,
-  seedBehaviour,
+  seedBehaviourSkills,
+  seedPointEvents,
   seedClassTasks,
   seedStudentTaskRecords,
 } from "@/data/seed";
@@ -48,7 +50,8 @@ interface AppStore {
   classes: SchoolClass[];
   subjects: Subject[];
   attendance: AttendanceRecord[];
-  behaviour: BehaviourRecord[];
+  behaviourSkills: BehaviourSkill[];
+  pointEvents: PointEvent[];
   classTasks: ClassTask[];
   studentTaskRecords: StudentTaskRecord[];
 
@@ -71,9 +74,12 @@ interface AppStore {
   addAttendance: (data: Omit<AttendanceRecord, "id" | "createdAt" | "updatedAt">) => void;
   updateAttendance: (id: string, data: Partial<AttendanceRecord>) => void;
 
-  addBehaviour: (data: Omit<BehaviourRecord, "id" | "createdAt" | "updatedAt">) => void;
-  updateBehaviour: (id: string, data: Partial<BehaviourRecord>) => void;
-  deleteBehaviour: (id: string) => void;
+  addBehaviourSkill: (data: Omit<BehaviourSkill, "id" | "createdAt" | "updatedAt">) => void;
+  updateBehaviourSkill: (id: string, data: Partial<BehaviourSkill>) => void;
+  deleteBehaviourSkill: (id: string) => void;
+
+  addPointEvent: (data: Omit<PointEvent, "id" | "createdAt">) => string;
+  deletePointEvent: (id: string) => void;
 
   setStudentEnrollment: (studentId: string, classIds: string[]) => void;
   enrollStudentInClass: (classId: string, studentId: string) => void;
@@ -91,7 +97,8 @@ interface AppStore {
     classes: SchoolClass[];
     subjects: Subject[];
     attendance: AttendanceRecord[];
-    behaviour: BehaviourRecord[];
+    behaviourSkills: BehaviourSkill[];
+    pointEvents: PointEvent[];
     classTasks: ClassTask[];
     studentTaskRecords: StudentTaskRecord[];
   }>) => void;
@@ -137,7 +144,11 @@ export const useAppStore = create<AppStore>((set) => {
   const classCrud = createCrudActions<SchoolClass>("classes", set, (s) => s.classes);
   const subjectCrud = createCrudActions<Subject>("subjects", set, (s) => s.subjects);
   const attendanceCrud = createCrudActions<AttendanceRecord>("attendance", set, (s) => s.attendance);
-  const behaviourCrud = createCrudActions<BehaviourRecord>("behaviour", set, (s) => s.behaviour);
+  const behaviourSkillCrud = createCrudActions<BehaviourSkill>(
+    "behaviourSkills",
+    set,
+    (s) => s.behaviourSkills
+  );
 
   return {
     teachers: loadOrSeed("teachers", seedTeachers),
@@ -145,7 +156,8 @@ export const useAppStore = create<AppStore>((set) => {
     classes: loadOrSeed("classes", seedClasses),
     subjects: loadOrSeed("subjects", seedSubjects),
     attendance: loadOrSeed("attendance", seedAttendance),
-    behaviour: loadOrSeed("behaviour", seedBehaviour),
+    behaviourSkills: loadOrSeed("behaviourSkills", seedBehaviourSkills),
+    pointEvents: loadOrSeed("pointEvents", seedPointEvents),
     classTasks: loadOrSeed("classTasks", seedClassTasks),
     studentTaskRecords: loadOrSeed("studentTaskRecords", seedStudentTaskRecords),
 
@@ -196,14 +208,14 @@ export const useAppStore = create<AppStore>((set) => {
             : c
         );
         const attendance = state.attendance.filter((a) => a.studentId !== id);
-        const behaviour = state.behaviour.filter((b) => b.studentId !== id);
+        const pointEvents = state.pointEvents.filter((e) => e.studentId !== id);
         const studentTaskRecords = state.studentTaskRecords.filter((r) => r.studentId !== id);
         storage.set("students", students);
         storage.set("classes", classes);
         storage.set("attendance", attendance);
-        storage.set("behaviour", behaviour);
+        storage.set("pointEvents", pointEvents);
         storage.set("studentTaskRecords", studentTaskRecords);
-        return { students, classes, attendance, behaviour, studentTaskRecords };
+        return { students, classes, attendance, pointEvents, studentTaskRecords };
       });
     },
 
@@ -238,15 +250,13 @@ export const useAppStore = create<AppStore>((set) => {
         const classTasks = state.classTasks.filter((t) => t.classId !== id);
         const studentTaskRecords = removeRecordsForTaskIds(taskIds, state.studentTaskRecords);
         const attendance = state.attendance.filter((a) => a.classId !== id);
-        const behaviour = state.behaviour.map((b) =>
-          b.classId === id ? { ...b, classId: undefined } : b
-        );
+        const pointEvents = state.pointEvents.filter((e) => e.classId !== id);
         storage.set("classes", classes);
         storage.set("classTasks", classTasks);
         storage.set("studentTaskRecords", studentTaskRecords);
         storage.set("attendance", attendance);
-        storage.set("behaviour", behaviour);
-        return { classes, classTasks, studentTaskRecords, attendance, behaviour };
+        storage.set("pointEvents", pointEvents);
+        return { classes, classTasks, studentTaskRecords, attendance, pointEvents };
       });
     },
 
@@ -267,9 +277,35 @@ export const useAppStore = create<AppStore>((set) => {
     addAttendance: attendanceCrud.add,
     updateAttendance: attendanceCrud.update,
 
-    addBehaviour: behaviourCrud.add,
-    updateBehaviour: behaviourCrud.update,
-    deleteBehaviour: behaviourCrud.delete,
+    addBehaviourSkill: behaviourSkillCrud.add,
+    updateBehaviourSkill: behaviourSkillCrud.update,
+    deleteBehaviourSkill: (id: string) => {
+      set((state) => {
+        const behaviourSkills = state.behaviourSkills.map((s) =>
+          s.id === id ? { ...s, active: false, updatedAt: timestamp() } : s
+        );
+        storage.set("behaviourSkills", behaviourSkills);
+        return { behaviourSkills };
+      });
+    },
+
+    addPointEvent: (data) => {
+      const id = nanoid();
+      const item: PointEvent = { ...data, id, createdAt: timestamp() };
+      set((state) => {
+        const pointEvents = [...state.pointEvents, item];
+        storage.set("pointEvents", pointEvents);
+        return { pointEvents };
+      });
+      return id;
+    },
+    deletePointEvent: (id: string) => {
+      set((state) => {
+        const pointEvents = state.pointEvents.filter((e) => e.id !== id);
+        storage.set("pointEvents", pointEvents);
+        return { pointEvents };
+      });
+    },
 
     setStudentEnrollment: (studentId: string, newClassIds: string[]) => {
       set((state) => {
@@ -414,7 +450,8 @@ export const useAppStore = create<AppStore>((set) => {
           classes: payload.classes ?? state.classes,
           subjects: payload.subjects ?? state.subjects,
           attendance: payload.attendance ?? state.attendance,
-          behaviour: payload.behaviour ?? state.behaviour,
+          behaviourSkills: payload.behaviourSkills ?? state.behaviourSkills,
+          pointEvents: payload.pointEvents ?? state.pointEvents,
           classTasks: payload.classTasks ?? state.classTasks,
           studentTaskRecords: payload.studentTaskRecords ?? state.studentTaskRecords,
         };
@@ -429,7 +466,8 @@ export const useAppStore = create<AppStore>((set) => {
         classes: seedClasses,
         subjects: seedSubjects,
         attendance: seedAttendance,
-        behaviour: seedBehaviour,
+        behaviourSkills: seedBehaviourSkills,
+        pointEvents: seedPointEvents,
         classTasks: seedClassTasks,
         studentTaskRecords: seedStudentTaskRecords,
       };
@@ -438,7 +476,8 @@ export const useAppStore = create<AppStore>((set) => {
       storage.set("classes", next.classes);
       storage.set("subjects", next.subjects);
       storage.set("attendance", next.attendance);
-      storage.set("behaviour", next.behaviour);
+      storage.set("behaviourSkills", next.behaviourSkills);
+      storage.set("pointEvents", next.pointEvents);
       storage.set("classTasks", next.classTasks);
       storage.set("studentTaskRecords", next.studentTaskRecords);
       set(next);
@@ -454,7 +493,8 @@ connectCloudPersistence(() => {
     classes: s.classes,
     subjects: s.subjects,
     attendance: s.attendance,
-    behaviour: s.behaviour,
+    behaviourSkills: s.behaviourSkills,
+    pointEvents: s.pointEvents,
     classTasks: s.classTasks,
     studentTaskRecords: s.studentTaskRecords,
   };

@@ -11,18 +11,15 @@ import {
   Check,
   X,
   Shield,
-  StickyNote,
+  Sparkles,
   MoreHorizontal,
   Play,
   Award,
-  ThumbsUp,
-  ThumbsDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,17 +67,16 @@ import { StudentFormDialog } from "@/features/students/StudentFormDialog";
 import { StudentImportDialog } from "@/features/students/StudentImportDialog";
 import { ClassTaskFormDialog } from "@/features/tasks/ClassTaskFormDialog";
 import { TaskProgressDialog } from "@/features/tasks/TaskProgressDialog";
-import { BehaviourFormDialog } from "@/features/behaviour/BehaviourFormDialog";
-import { ClassStudentBehaviourListDialog } from "@/features/behaviour/ClassStudentBehaviourListDialog";
+import { ClassPointsPanel } from "@/features/points/ClassPointsPanel";
 import { StudentRosterTable } from "@/features/classes/StudentRosterTable";
 import { ClassTasksSection } from "@/features/classes/ClassTasksSection";
 import type {
   AttendanceStatus,
-  BehaviourRecord,
   ClassTask,
   StudentTaskRecord,
   StudentTaskStatus,
 } from "@/types";
+import { pointsByStudent } from "@/lib/pointsUtils";
 
 export function ClassDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -94,11 +90,10 @@ export function ClassDetailPage() {
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
   const attendance = useAppStore((s) => s.attendance);
-  const behaviour = useAppStore((s) => s.behaviour);
+  const pointEvents = useAppStore((s) => s.pointEvents);
   const addAttendance = useAppStore((s) => s.addAttendance);
   const updateAttendance = useAppStore((s) => s.updateAttendance);
   const updateStudentTaskRecord = useAppStore((s) => s.updateStudentTaskRecord);
-  const addBehaviour = useAppStore((s) => s.addBehaviour);
   const deleteClassTask = useAppStore((s) => s.deleteClassTask);
   const archiveClassTask = useAppStore((s) => s.archiveClassTask);
   const unarchiveClassTask = useAppStore((s) => s.unarchiveClassTask);
@@ -113,18 +108,10 @@ export function ClassDetailPage() {
   const [progressStudentName, setProgressStudentName] = useState("");
   const [progressTaskTitle, setProgressTaskTitle] = useState("");
   const [progressMaxScore, setProgressMaxScore] = useState<number | null | undefined>();
-  const [behaviourOpen, setBehaviourOpen] = useState(false);
-  const [behaviourStudentId, setBehaviourStudentId] = useState<string | undefined>();
-  const [behaviourEditingRecord, setBehaviourEditingRecord] = useState<BehaviourRecord | null>(null);
-  const [behaviourListOpen, setBehaviourListOpen] = useState(false);
-  const [behaviourListStudentId, setBehaviourListStudentId] = useState<string | undefined>();
   const [randomPickerOpen, setRandomPickerOpen] = useState(false);
   const [randomStudentId, setRandomStudentId] = useState<string | null>(null);
   const [randomCycleShownIds, setRandomCycleShownIds] = useState<string[]>([]);
-  const [randomMode, setRandomMode] = useState<"updates" | "reward">("updates");
   const [quickAttendance, setQuickAttendance] = useState<AttendanceStatus | null>(null);
-  const [quickRewardPoint, setQuickRewardPoint] = useState<1 | -1 | null>(null);
-  const [quickRewardNote, setQuickRewardNote] = useState("");
   const [quickTaskUpdates, setQuickTaskUpdates] = useState<
     Record<string, { recordId: string; status: StudentTaskStatus; score: string }>
   >({});
@@ -182,29 +169,6 @@ export function ClassDetailPage() {
     [attendance, cls?.id, attendanceDate]
   );
 
-  const behaviourNoteCountByStudent = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!cls?.id) return map;
-    for (const b of behaviour) {
-      if (b.classId !== cls.id) continue;
-      map.set(b.studentId, (map.get(b.studentId) ?? 0) + 1);
-    }
-    return map;
-  }, [behaviour, cls?.id]);
-
-  const rewardPointsByStudent = useMemo(() => {
-    const out = new Map<string, number>();
-    if (!cls?.id) return out;
-    for (const b of behaviour) {
-      if (b.classId !== cls.id) continue;
-      if (!b.actionTaken?.startsWith("reward_point:")) continue;
-      const delta = b.actionTaken.endsWith(":+1") ? 1 : b.actionTaken.endsWith(":-1") ? -1 : 0;
-      if (!delta) continue;
-      out.set(b.studentId, (out.get(b.studentId) ?? 0) + delta);
-    }
-    return out;
-  }, [behaviour, cls?.id]);
-
   const recordByTaskAndStudent = useMemo(() => {
     const map = new Map<string, StudentTaskRecord>();
     for (const r of studentTaskRecords) {
@@ -222,21 +186,6 @@ export function ClassDetailPage() {
   };
 
   const attendanceStatuses: AttendanceStatus[] = ["present", "absent", "late", "excused"];
-  const negativeBehaviourTemplates = [
-    "Sleeping in class",
-    "Did not do classwork",
-    "Off-task / distracted others",
-    "Late to class",
-    "Disrespectful language",
-  ];
-  const positiveBehaviourTemplates = [
-    "Excellent participation",
-    "Helped classmates",
-    "Completed all classwork",
-    "Stayed focused and on task",
-    "Showed leadership",
-  ];
-
   const attendanceBtnClass: Record<AttendanceStatus, string> = {
     present: "bg-emerald-100 text-emerald-800 ring-emerald-500",
     absent: "bg-red-100 text-red-800 ring-red-500",
@@ -251,12 +200,6 @@ export function ClassDetailPage() {
     excused: Shield,
   };
 
-  const behaviourListStudentName = useMemo(() => {
-    if (!behaviourListStudentId) return "";
-    const s = students.find((x) => x.id === behaviourListStudentId);
-    return s ? getStudentDisplayName(s) : "Student";
-  }, [behaviourListStudentId, students]);
-
   const mainTeacher = teachers.find((t) => t.id === (cls?.teacherId ?? ""));
   const coTeachers = teachers.filter((t) => (cls?.coTeacherIds ?? []).includes(t.id));
   const classStudents = useMemo(() => {
@@ -265,15 +208,24 @@ export function ClassDetailPage() {
       .filter((s) => set.has(s.id))
       .sort((a, b) => getStudentDisplayName(a).localeCompare(getStudentDisplayName(b)));
   }, [students, cls?.studentIds]);
-  const rewardLeaderboard = useMemo(() => {
+
+  const pointsTodayByStudent = useMemo(() => {
+    if (!cls?.id) return new Map<string, number>();
+    const todayEvents = pointEvents.filter(
+      (e) => e.classId === cls.id && e.date === attendanceDate
+    );
+    return pointsByStudent(todayEvents, classStudents.map((s) => s.id));
+  }, [pointEvents, cls?.id, attendanceDate, classStudents]);
+
+  const pointsLeaderboard = useMemo(() => {
     return classStudents
       .map((s) => ({
         id: s.id,
         name: getStudentDisplayName(s),
-        points: rewardPointsByStudent.get(s.id) ?? 0,
+        points: pointsTodayByStudent.get(s.id) ?? 0,
       }))
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
-  }, [classStudents, rewardPointsByStudent]);
+  }, [classStudents, pointsTodayByStudent]);
   const subject = subjects.find((s) => s.id === (cls?.subjectId ?? ""));
   const sortedSchedule = [...(cls?.schedule ?? [])].sort(
     (a, b) => DAY_ORDER.indexOf(a.dayOfWeek) - DAY_ORDER.indexOf(b.dayOfWeek)
@@ -322,12 +274,6 @@ export function ClassDetailPage() {
     setProgressRecord(record);
   };
 
-  const openBehaviourForStudent = (studentId: string) => {
-    setBehaviourEditingRecord(null);
-    setBehaviourStudentId(studentId);
-    setBehaviourOpen(true);
-  };
-
   const pickRandomStudentId = (ids: string[]) => {
     if (ids.length === 0) return null;
     const idx = Math.floor(Math.random() * ids.length);
@@ -336,8 +282,6 @@ export function ClassDetailPage() {
 
   const setupQuickPickerState = (studentId: string) => {
     setQuickAttendance(getAttendanceStatus(studentId));
-    setQuickRewardPoint(null);
-    setQuickRewardNote("");
     const updates: Record<string, { recordId: string; status: StudentTaskStatus; score: string }> = {};
     for (const task of activeTasksForClass) {
       const rec = getTaskRecord(task.id, studentId);
@@ -351,13 +295,12 @@ export function ClassDetailPage() {
     setQuickTaskUpdates(updates);
   };
 
-  const openRandomStudentPicker = (mode: "updates" | "reward" = "updates") => {
+  const openRandomStudentPicker = () => {
     const nextId = pickRandomStudentId(classStudents.map((s) => s.id));
     if (!nextId) {
       toast.info("No students in this class yet.");
       return;
     }
-    setRandomMode(mode);
     setRandomCycleShownIds([nextId]);
     setRandomStudentId(nextId);
     setupQuickPickerState(nextId);
@@ -366,34 +309,6 @@ export function ClassDetailPage() {
 
   const saveQuickUpdates = () => {
     if (!randomStudentId) return;
-    if (randomMode === "reward") {
-      if (quickRewardPoint === null) {
-        toast.info("Choose +1 or -1 before saving.");
-        return;
-      }
-      const note = quickRewardNote.trim();
-      if (!note) {
-        toast.info("Add a behaviour note/feedback before saving.");
-        return;
-      }
-      addBehaviour({
-        studentId: randomStudentId,
-        classId: cls?.id,
-        subjectId: cls?.subjectId || undefined,
-        date: attendanceDate || todayStr,
-        category: quickRewardPoint > 0 ? "participation" : "conduct",
-        severity: quickRewardPoint > 0 ? "positive" : "minor",
-        description:
-          quickRewardPoint > 0
-            ? `[Reward +1] ${note}`
-            : `[Reward -1] ${note}`,
-        actionTaken: `reward_point:${quickRewardPoint > 0 ? "+1" : "-1"}`,
-      });
-      toast.success("Reward point saved.");
-      setQuickRewardPoint(null);
-      setQuickRewardNote("");
-      return;
-    }
     if (quickAttendance) {
       markAttendance(randomStudentId, quickAttendance);
     }
@@ -438,34 +353,6 @@ export function ClassDetailPage() {
     setupQuickPickerState(nextId);
   };
 
-  const openBehaviourListForStudent = (studentId: string) => {
-    setBehaviourListStudentId(studentId);
-    setBehaviourListOpen(true);
-  };
-
-  const handleBehaviourOpenChange = (open: boolean) => {
-    setBehaviourOpen(open);
-    if (!open) {
-      setBehaviourStudentId(undefined);
-      setBehaviourEditingRecord(null);
-    }
-  };
-
-  const handleBehaviourListOpenChange = (open: boolean) => {
-    setBehaviourListOpen(open);
-    if (!open) setBehaviourListStudentId(undefined);
-  };
-
-  const handleAddNoteFromList = (studentId: string) => {
-    openBehaviourForStudent(studentId);
-  };
-
-  const handleEditNoteFromList = (record: BehaviourRecord) => {
-    setBehaviourEditingRecord(record);
-    setBehaviourStudentId(record.studentId);
-    setBehaviourOpen(true);
-  };
-
   const handleDeleteTask = () => {
     if (deleteTaskTarget) {
       deleteClassTask(deleteTaskTarget.id);
@@ -508,8 +395,8 @@ export function ClassDetailPage() {
                 Full attendance page
               </Link>
               <span aria-hidden className="text-border">·</span>
-              <Link to={`/behaviour?classId=${cls.id}`} className="hover:text-primary hover:underline">
-                All behaviour notes
+              <Link to={`/points?classId=${cls.id}`} className="hover:text-primary hover:underline">
+                Points history
               </Link>
             </div>
           </div>
@@ -580,35 +467,28 @@ export function ClassDetailPage() {
         </Card>
       )}
 
+      <ClassPointsPanel cls={cls} students={classStudents} sessionDate={attendanceDate} />
+
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Class Session</CardTitle>
+          <CardTitle className="text-base">Quick class check</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Use this sequence: start class, run student checks, then end with behaviour rewards.
+            Random student picker for attendance and task updates. Use Class points above for merits.
           </p>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Button
-            onClick={() => openRandomStudentPicker("updates")}
+            onClick={() => openRandomStudentPicker()}
             disabled={classStudents.length === 0}
-            title="Start class with random quick updates"
+            title="Random student attendance and task updates"
           >
             <Play className="mr-1.5 h-4 w-4" />
-            Start class
+            Random student check
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => openRandomStudentPicker("reward")}
-            disabled={classStudents.length === 0}
-            title="Random end-of-class reward round"
-          >
-            <Award className="mr-1.5 h-4 w-4" />
-            End class rewards
-          </Button>
-          <Button asChild type="button" variant="outline" title="Open behaviour notes for this class">
-            <Link to={`/behaviour?classId=${cls.id}`}>
-              <StickyNote className="mr-1.5 h-4 w-4" />
-              Behaviour notes
+          <Button asChild type="button" variant="outline">
+            <Link to={`/points?classId=${cls.id}`}>
+              <Sparkles className="mr-1.5 h-4 w-4" />
+              Points history
             </Link>
           </Button>
         </CardContent>
@@ -653,9 +533,9 @@ export function ClassDetailPage() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link to={`/behaviour?classId=${cls.id}`}>
-                    <StickyNote className="mr-2 h-4 w-4" />
-                    All behaviour notes
+                  <Link to={`/points?classId=${cls.id}`}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Points history
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setAddExistingOpen(true)}>
@@ -677,7 +557,7 @@ export function ClassDetailPage() {
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
             Attendance: ✓ present · ✗ absent · clock late · shield excused. Tasks: set status and points; use ··· for feedback and dates.
-            Notes: one button opens the list for this class (badge = count); use Add note there to create a new entry.
+            Today column shows net points for the selected date (use Class points above to award).
           </p>
           <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
             <StudentRosterTable
@@ -685,19 +565,18 @@ export function ClassDetailPage() {
               activeTasks={activeTasksForClass}
               studentTaskRecords={studentTaskRecords}
               dayAttendanceRows={dayAttendanceRows}
-              behaviourNoteCountByStudent={behaviourNoteCountByStudent}
+              pointsTodayByStudent={pointsTodayByStudent}
               onMarkAttendance={markAttendance}
               onTaskStatusChange={onTaskStatusChange}
               onTaskScoreBlur={onTaskScoreBlur}
               onOpenProgress={openProgress}
-              onOpenBehaviourList={openBehaviourListForStudent}
               archivedTaskCount={archivedTasksForClass.length}
             />
           </div>
 
           <div className="md:hidden space-y-3">
             {classStudents.map((student) => {
-              const noteCount = behaviourNoteCountByStudent.get(student.id) ?? 0;
+              const pts = pointsTodayByStudent.get(student.id) ?? 0;
               const currentAttendanceStatus = getAttendanceStatus(student.id);
 
               return (
@@ -711,25 +590,17 @@ export function ClassDetailPage() {
                       {getStudentDisplayName(student)}
                     </Link>
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 px-2.5"
-                      onClick={() => openBehaviourListForStudent(student.id)}
-                      title="View notes for this class or add a new one"
-                    >
-                      <StickyNote className="h-3.5 w-3.5 shrink-0" />
-                      <span>Notes</span>
-                      {noteCount > 0 && (
-                        <Badge
-                          variant="secondary"
-                          className="rounded-sm px-1.5 text-[10px] tabular-nums"
-                        >
-                          {noteCount}
-                        </Badge>
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-sm font-semibold tabular-nums",
+                        pts > 0 && "text-emerald-600",
+                        pts < 0 && "text-amber-600",
+                        pts === 0 && "text-muted-foreground"
                       )}
-                    </Button>
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {pts > 0 ? `+${pts}` : pts}
+                    </span>
                   </div>
 
                   {/* Section 2 — attendance */}
@@ -882,15 +753,15 @@ export function ClassDetailPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Award className="h-4 w-4" /> Reward progress
+            <Award className="h-4 w-4" /> Points today
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {rewardLeaderboard.length === 0 ? (
+          {pointsLeaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground">No students yet.</p>
           ) : (
             <div className="space-y-2">
-              {rewardLeaderboard.slice(0, 10).map((row) => (
+              {pointsLeaderboard.slice(0, 10).map((row) => (
                 <div
                   key={row.id}
                   className="flex items-center justify-between rounded-md border border-border bg-muted/20 px-3 py-2 text-sm"
@@ -908,9 +779,9 @@ export function ClassDetailPage() {
                   </span>
                 </div>
               ))}
-              {rewardLeaderboard.length > 10 && (
+              {pointsLeaderboard.length > 10 && (
                 <p className="text-xs text-muted-foreground">
-                  Showing top 10. Open reward round to keep scoring.
+                  Showing top 10 for {attendanceDate}.
                 </p>
               )}
             </div>
@@ -936,25 +807,6 @@ export function ClassDetailPage() {
         onOpenChange={setImportStudentsOpen}
         targetClassId={cls.id}
         lockToClass
-      />
-
-      <ClassStudentBehaviourListDialog
-        open={behaviourListOpen}
-        onOpenChange={handleBehaviourListOpenChange}
-        classId={cls.id}
-        studentId={behaviourListStudentId}
-        studentName={behaviourListStudentName}
-        onAddNote={handleAddNoteFromList}
-        onEditNote={handleEditNoteFromList}
-      />
-
-      <BehaviourFormDialog
-        open={behaviourOpen}
-        onOpenChange={handleBehaviourOpenChange}
-        editingRecord={behaviourEditingRecord}
-        preselectedStudentId={behaviourStudentId}
-        preselectedClassId={cls.id}
-        preselectedSubjectId={cls.subjectId || undefined}
       />
 
       <ClassTaskFormDialog
@@ -987,8 +839,6 @@ export function ClassDetailPage() {
             setRandomCycleShownIds([]);
             setQuickTaskUpdates({});
             setQuickAttendance(null);
-            setQuickRewardPoint(null);
-            setQuickRewardNote("");
           }
         }}
       >
@@ -996,9 +846,7 @@ export function ClassDetailPage() {
           <DialogHeader>
             <DialogTitle>Random student picker</DialogTitle>
             <DialogDescription>
-              {randomMode === "reward"
-                ? "End-of-class reward mode. Give +1 / -1 points and move through the full class cycle."
-                : "Quick attendance + assignment update flow. Save and move to the next random student."}
+              Quick attendance and assignment updates. Save and move to the next random student.
             </DialogDescription>
             <p className="text-xs text-muted-foreground">
               Progress this cycle: {randomCycleShownIds.length} / {classStudents.length}
@@ -1024,91 +872,7 @@ export function ClassDetailPage() {
                   </div>
                 </div>
 
-                {randomMode === "reward" ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">Reward points</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant={quickRewardPoint === 1 ? "default" : "outline"}
-                        className="gap-1.5"
-                        onClick={() => setQuickRewardPoint(1)}
-                      >
-                        <ThumbsUp className="h-4 w-4" />
-                        +1 Positive
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={quickRewardPoint === -1 ? "destructive" : "outline"}
-                        className="gap-1.5"
-                        onClick={() => setQuickRewardPoint(-1)}
-                      >
-                        <ThumbsDown className="h-4 w-4" />
-                        -1 Negative
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Current total: {rewardPointsByStudent.get(current.id) ?? 0}
-                    </p>
-                    <div className="space-y-1">
-                      {quickRewardPoint !== null && (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            Quick options
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {(quickRewardPoint > 0
-                              ? positiveBehaviourTemplates
-                              : negativeBehaviourTemplates
-                            ).map((template) => (
-                              <button
-                                key={template}
-                                type="button"
-                                onClick={() => setQuickRewardNote(template)}
-                                className={cn(
-                                  "rounded-md border px-2 py-1 text-xs transition-colors",
-                                  quickRewardNote === template
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border bg-background text-muted-foreground hover:bg-muted"
-                                )}
-                              >
-                                {template}
-                              </button>
-                            ))}
-                            <button
-                              type="button"
-                              onClick={() => setQuickRewardNote("")}
-                              className={cn(
-                                "rounded-md border px-2 py-1 text-xs transition-colors",
-                                quickRewardNote === ""
-                                  ? "border-primary bg-primary/10 text-primary"
-                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
-                              )}
-                            >
-                              Custom
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Teacher note / feedback
-                      </p>
-                      <Textarea
-                        value={quickRewardNote}
-                        onChange={(e) => setQuickRewardNote(e.target.value)}
-                        rows={2}
-                        placeholder={
-                          quickRewardPoint === 1
-                            ? "e.g. Helped a classmate and stayed focused."
-                            : quickRewardPoint === -1
-                              ? "e.g. Sleeping in class / doing unrelated work."
-                              : "Describe the behaviour for this point."
-                        }
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
+                <>
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-muted-foreground">Attendance</p>
                       <div className="flex flex-wrap gap-1.5">
@@ -1221,8 +985,7 @@ export function ClassDetailPage() {
                         </div>
                       )}
                     </div>
-                  </>
-                )}
+                </>
               </div>
             );
           })()}

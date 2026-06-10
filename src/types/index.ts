@@ -51,6 +51,8 @@ export interface SchoolClass extends BaseEntity {
   coTeacherIds: string[];
   studentIds: string[];
   schedule: ScheduleEntry[];
+  /** School-wide skills pinned to this class toolbar (skill ids). */
+  pinnedSkillIds?: string[];
 }
 
 export interface Subject extends BaseEntity {
@@ -69,23 +71,28 @@ export interface AttendanceRecord extends BaseEntity {
   notes?: string;
 }
 
-export type BehaviourSeverity = "positive" | "minor" | "moderate" | "major";
-export type BehaviourCategory =
-  | "academic"
-  | "conduct"
-  | "participation"
-  | "respect"
-  | "other";
+export type SkillType = "positive" | "needs_work";
 
-export interface BehaviourRecord extends BaseEntity {
+/** School-wide merit / reminder skill (ClassDojo-style). */
+export interface BehaviourSkill extends BaseEntity {
+  name: string;
+  emoji?: string;
+  points: number;
+  type: SkillType;
+  active: boolean;
+  sortOrder: number;
+}
+
+/** A single point award during class. */
+export interface PointEvent {
+  id: string;
   studentId: string;
-  classId?: string;
-  subjectId?: string;
+  skillId: string;
+  classId: string;
   date: string;
-  category: BehaviourCategory;
-  severity: BehaviourSeverity;
-  description: string;
-  actionTaken?: string;
+  points: number;
+  note?: string;
+  createdAt: string;
 }
 
 export type ClassTaskType =
@@ -128,7 +135,8 @@ export interface AppData {
   classes: SchoolClass[];
   subjects: Subject[];
   attendance: AttendanceRecord[];
-  behaviour: BehaviourRecord[];
+  behaviourSkills: BehaviourSkill[];
+  pointEvents: PointEvent[];
   classTasks: ClassTask[];
   studentTaskRecords: StudentTaskRecord[];
 }

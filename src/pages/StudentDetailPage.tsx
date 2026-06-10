@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useMemo, useState } from "react";
-import { ArrowLeft, User, School, Calendar, AlertTriangle, ClipboardList, Archive, ChevronDown } from "lucide-react";
+import { ArrowLeft, User, School, Calendar, Sparkles, ClipboardList, Archive, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/table";
 import { useAppStore } from "@/store";
 import { cn, formatDate } from "@/lib/utils";
-import { ATTENDANCE_STATUS_COLORS, SEVERITY_BADGE_VARIANT, getStudentDisplayName } from "@/lib/displayHelpers";
+import { ATTENDANCE_STATUS_COLORS, getStudentDisplayName } from "@/lib/displayHelpers";
+import { skillButtonClass } from "@/lib/pointsUtils";
 import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
 import { studentTaskStatusBadgeClass, studentTaskStatusLabel } from "@/lib/studentTaskStatus";
 
@@ -24,8 +25,8 @@ export function StudentDetailPage() {
   const students = useAppStore((s) => s.students);
   const classes = useAppStore((s) => s.classes);
   const attendance = useAppStore((s) => s.attendance);
-  const behaviour = useAppStore((s) => s.behaviour);
-  const subjects = useAppStore((s) => s.subjects);
+  const pointEvents = useAppStore((s) => s.pointEvents);
+  const behaviourSkills = useAppStore((s) => s.behaviourSkills);
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
 
@@ -89,9 +90,11 @@ export function StudentDetailPage() {
   const studentAttendance = attendance
     .filter((a) => a.studentId === student.id)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const studentBehaviour = behaviour
-    .filter((b) => b.studentId === student.id)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const studentPointEvents = pointEvents
+    .filter((e) => e.studentId === student.id)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.createdAt.localeCompare(a.createdAt));
+  const skillById = new Map(behaviourSkills.map((s) => [s.id, s]));
+  const totalPoints = studentPointEvents.reduce((sum, e) => sum + e.points, 0);
 
   const presentCount = studentAttendance.filter((a) => a.status === "present").length;
   const totalRecords = studentAttendance.length;
@@ -184,7 +187,7 @@ export function StudentDetailPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <AlertTriangle className="h-4 w-4" /> Parent / Guardian
+              <User className="h-4 w-4" /> Parent / Guardian
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
@@ -372,34 +375,56 @@ export function StudentDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Behaviour Notes</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-muted-foreground" />
+            Points
+            {totalPoints !== 0 && (
+              <Badge variant="secondary" className="tabular-nums">
+                {totalPoints > 0 ? `+${totalPoints}` : totalPoints} total
+              </Badge>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {studentBehaviour.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No behaviour records yet.</p>
+          {studentPointEvents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No points recorded yet.</p>
           ) : (
             <div className="space-y-3">
-              {studentBehaviour.map((record) => {
-                const sub = subjects.find((s) => s.id === record.subjectId);
+              {studentPointEvents.map((event) => {
+                const skill = skillById.get(event.skillId);
+                const cls = classes.find((c) => c.id === event.classId);
                 return (
-                  <div key={record.id} className="rounded-lg border border-border p-4">
+                  <div key={event.id} className="rounded-lg border border-border p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={SEVERITY_BADGE_VARIANT[record.severity] ?? "secondary"}>
-                            {record.severity}
-                          </Badge>
-                          <Badge variant="outline">{record.category}</Badge>
-                          {sub && <Badge variant="secondary">{sub.name}</Badge>}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {skill ? (
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
+                                skillButtonClass(skill)
+                              )}
+                            >
+                              {skill.emoji && <span>{skill.emoji}</span>}
+                              {skill.name}
+                            </span>
+                          ) : (
+                            <Badge variant="outline">Unknown skill</Badge>
+                          )}
+                          {cls && <Badge variant="secondary">{cls.name}</Badge>}
+                          <span
+                            className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              event.points > 0 && "text-emerald-600",
+                              event.points < 0 && "text-amber-600"
+                            )}
+                          >
+                            {event.points > 0 ? `+${event.points}` : event.points}
+                          </span>
                         </div>
-                        <p className="mt-2 text-sm">{record.description}</p>
-                        {record.actionTaken && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Action: {record.actionTaken}
-                          </p>
-                        )}
+                        {event.note && <p className="mt-2 text-sm text-muted-foreground">{event.note}</p>}
                       </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(record.date)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(event.date)}</span>
                     </div>
                   </div>
                 );

@@ -1,4 +1,4 @@
-import { Users, School, GraduationCap, BookOpen, ClipboardList } from "lucide-react";
+import { Users, School, GraduationCap, BookOpen, ClipboardList, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAppStore } from "@/store";
 import { DashboardCalendar } from "@/features/dashboard/DashboardCalendar";
@@ -31,7 +31,7 @@ export function DashboardPage() {
   const classes = useAppStore((s) => s.classes);
   const teachers = useAppStore((s) => s.teachers);
   const subjects = useAppStore((s) => s.subjects);
-  const behaviour = useAppStore((s) => s.behaviour);
+  const pointEvents = useAppStore((s) => s.pointEvents);
   const attendance = useAppStore((s) => s.attendance);
 
   const todayStr = new Date().toISOString().split("T")[0];
@@ -39,7 +39,10 @@ export function DashboardPage() {
   const presentCount = todayAttendance.filter((a) => a.status === "present").length;
   const absentCount = todayAttendance.filter((a) => a.status === "absent").length;
   const lateCount = todayAttendance.filter((a) => a.status === "late").length;
-  const todayBehaviourCount = behaviour.filter((b) => b.date === todayStr).length;
+  const todayPointsCount = pointEvents.filter((e) => e.date === todayStr).length;
+  const todayPointsNet = pointEvents
+    .filter((e) => e.date === todayStr)
+    .reduce((sum, e) => sum + e.points, 0);
 
   return (
     <div className="space-y-6">
@@ -77,8 +80,13 @@ export function DashboardPage() {
               <div className="text-xs text-amber-600 dark:text-amber-400">Late</div>
             </div>
             <div className="rounded-lg bg-blue-50 p-3 text-center dark:bg-blue-950/35">
-              <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{todayBehaviourCount}</div>
-              <div className="text-xs text-blue-600 dark:text-blue-400">Behaviour notes</div>
+              <div className="flex items-center justify-center gap-1 text-2xl font-bold text-blue-700 dark:text-blue-300">
+                <Sparkles className="h-5 w-5" />
+                {todayPointsNet > 0 ? `+${todayPointsNet}` : todayPointsNet}
+              </div>
+              <div className="text-xs text-blue-600 dark:text-blue-400">
+                {todayPointsCount} point{todayPointsCount !== 1 ? "s" : ""} today
+              </div>
             </div>
           </div>
         </CardContent>

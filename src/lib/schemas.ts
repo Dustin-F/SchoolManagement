@@ -79,17 +79,15 @@ export const subjectSchema = z.object({
 });
 export type SubjectFormData = z.infer<typeof subjectSchema>;
 
-export const behaviourSchema = z.object({
-  studentId: z.string().min(1, "Student is required"),
-  classId: z.string().optional(),
-  subjectId: z.string().optional(),
-  date: z.string().min(1, "Date is required"),
-  category: z.enum(["academic", "conduct", "participation", "respect", "other"]),
-  severity: z.enum(["positive", "minor", "moderate", "major"]),
-  description: z.string().min(1, "Description is required"),
-  actionTaken: z.string().optional(),
+export const behaviourSkillSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  emoji: z.string().optional(),
+  points: z.number().int().refine((n) => n !== 0, "Points cannot be zero"),
+  type: z.enum(["positive", "needs_work"]),
+  active: z.boolean(),
+  sortOrder: z.number().int().min(0),
 });
-export type BehaviourFormData = z.infer<typeof behaviourSchema>;
+export type BehaviourSkillFormData = z.infer<typeof behaviourSkillSchema>;
 
 const classTaskTypes = [
   "exam",

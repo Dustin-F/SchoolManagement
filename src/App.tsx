@@ -9,7 +9,8 @@ import { StudentsPage } from "@/pages/StudentsPage";
 import { TeachersPage } from "@/pages/TeachersPage";
 import { SubjectsPage } from "@/pages/SubjectsPage";
 import { AttendancePage } from "@/pages/AttendancePage";
-import { BehaviourPage } from "@/pages/BehaviourPage";
+import { PointsPage } from "@/pages/PointsPage";
+import { Navigate } from "react-router-dom";
 import { StudentDetailPage } from "@/pages/StudentDetailPage";
 import { AuthPage } from "@/pages/AuthPage";
 import { supabase } from "@/lib/supabase";
@@ -102,7 +103,8 @@ export default function App() {
           <Route path="teachers" element={<TeachersPage />} />
           <Route path="subjects" element={<SubjectsPage />} />
           <Route path="attendance" element={<AttendancePage />} />
-          <Route path="behaviour" element={<BehaviourPage />} />
+          <Route path="points" element={<PointsPage />} />
+          <Route path="behaviour" element={<Navigate to="/points" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>

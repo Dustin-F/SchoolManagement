@@ -4,7 +4,8 @@ import type {
   SchoolClass,
   Subject,
   AttendanceRecord,
-  BehaviourRecord,
+  BehaviourSkill,
+  PointEvent,
   ClassTask,
   StudentTaskRecord,
   StudentTaskStatus,
@@ -154,6 +155,14 @@ export const seedClasses: SchoolClass[] = [
     teacherId: "tch-mike",
     coTeacherIds: [],
     studentIds: G10B,
+    pinnedSkillIds: [
+      "skill-participation",
+      "skill-on-task",
+      "skill-excellent",
+      "skill-helping",
+      "skill-talking",
+      "skill-off-task",
+    ],
     schedule: [
       { id: "sch-10b-i1", dayOfWeek: "monday", startTime: "08:00", endTime: "08:40" },
       { id: "sch-10b-i2", dayOfWeek: "tuesday", startTime: "09:40", endTime: "10:20" },
@@ -232,64 +241,91 @@ export const seedAttendance: AttendanceRecord[] = [
   att("att-10a-y-14", { studentId: "stu-14", classId: "cls-10a-ielts", date: YESTERDAY, status: "late" }),
 ];
 
-export const seedBehaviour: BehaviourRecord[] = [
-  ent<BehaviourRecord>("beh-01", {
-    studentId: "stu-02",
-    classId: "cls-9a-math",
-    subjectId: "sub-math",
-    date: TODAY,
-    category: "academic",
-    severity: "positive",
-    description: "Excellent problem-solving on the board.",
-    actionTaken: "Verbal praise",
+export const seedBehaviourSkills: BehaviourSkill[] = [
+  ent<BehaviourSkill>("skill-participation", {
+    name: "Great participation",
+    emoji: "👏",
+    points: 1,
+    type: "positive",
+    active: true,
+    sortOrder: 1,
   }),
-  ent<BehaviourRecord>("beh-02", {
-    studentId: "stu-10",
-    classId: "cls-9b-eng",
-    subjectId: "sub-english",
-    date: YESTERDAY,
-    category: "conduct",
-    severity: "minor",
-    description: "Talking during silent reading.",
-    actionTaken: "Reminder given",
+  ent<BehaviourSkill>("skill-helping", {
+    name: "Helping others",
+    emoji: "🤝",
+    points: 1,
+    type: "positive",
+    active: true,
+    sortOrder: 2,
   }),
-  ent<BehaviourRecord>("beh-03", {
-    studentId: "stu-19",
-    classId: "cls-10b-ielts",
-    subjectId: "sub-ielts",
-    date: TODAY,
-    category: "participation",
-    severity: "positive",
-    description: "Led group discussion confidently.",
+  ent<BehaviourSkill>("skill-on-task", {
+    name: "On task",
+    emoji: "✅",
+    points: 1,
+    type: "positive",
+    active: true,
+    sortOrder: 3,
   }),
-  ent<BehaviourRecord>("beh-04", {
-    studentId: "stu-21",
-    classId: "cls-10b-ielts",
-    subjectId: "sub-ielts",
-    date: TWO_DAYS_AGO,
-    category: "conduct",
-    severity: "moderate",
-    description: "Phone out during mock speaking.",
-    actionTaken: "Phone held at front desk",
+  ent<BehaviourSkill>("skill-excellent", {
+    name: "Excellent work",
+    emoji: "⭐",
+    points: 2,
+    type: "positive",
+    active: true,
+    sortOrder: 4,
   }),
-  ent<BehaviourRecord>("beh-05", {
-    studentId: "stu-14",
-    classId: "cls-10a-sci",
-    subjectId: "sub-science",
-    date: YESTERDAY,
-    category: "respect",
-    severity: "positive",
-    description: "Helped classmate set up lab equipment.",
+  ent<BehaviourSkill>("skill-kindness", {
+    name: "Kindness",
+    emoji: "💜",
+    points: 1,
+    type: "positive",
+    active: true,
+    sortOrder: 5,
   }),
-  ent<BehaviourRecord>("beh-06", {
-    studentId: "stu-05",
-    classId: "cls-9a-math",
-    subjectId: "sub-math",
-    date: TWO_DAYS_AGO,
-    category: "academic",
-    severity: "minor",
-    description: "Homework not submitted on time.",
+  ent<BehaviourSkill>("skill-talking", {
+    name: "Talking",
+    emoji: "💬",
+    points: -1,
+    type: "needs_work",
+    active: true,
+    sortOrder: 6,
   }),
+  ent<BehaviourSkill>("skill-off-task", {
+    name: "Off task",
+    emoji: "📵",
+    points: -1,
+    type: "needs_work",
+    active: true,
+    sortOrder: 7,
+  }),
+  ent<BehaviourSkill>("skill-late", {
+    name: "Late",
+    emoji: "⏰",
+    points: -1,
+    type: "needs_work",
+    active: true,
+    sortOrder: 8,
+  }),
+];
+
+function pt(
+  id: string,
+  data: Omit<PointEvent, "id" | "createdAt">
+): PointEvent {
+  return { id, createdAt: SEED_TIME, ...data };
+}
+
+export const seedPointEvents: PointEvent[] = [
+  pt("pt-01", { studentId: "stu-02", skillId: "skill-excellent", classId: "cls-9a-math", date: TODAY, points: 2, note: "Excellent problem-solving on the board." }),
+  pt("pt-02", { studentId: "stu-10", skillId: "skill-talking", classId: "cls-9b-eng", date: YESTERDAY, points: -1, note: "Talking during silent reading." }),
+  pt("pt-03", { studentId: "stu-19", skillId: "skill-participation", classId: "cls-10b-ielts", date: TODAY, points: 1, note: "Led group discussion confidently." }),
+  pt("pt-04", { studentId: "stu-21", skillId: "skill-off-task", classId: "cls-10b-ielts", date: TWO_DAYS_AGO, points: -1, note: "Phone out during mock speaking." }),
+  pt("pt-05", { studentId: "stu-14", skillId: "skill-helping", classId: "cls-10a-sci", date: YESTERDAY, points: 1 }),
+  pt("pt-06", { studentId: "stu-05", skillId: "skill-late", classId: "cls-9a-math", date: TWO_DAYS_AGO, points: -1 }),
+  pt("pt-07", { studentId: "stu-20", skillId: "skill-participation", classId: "cls-10b-ielts", date: TODAY, points: 1 }),
+  pt("pt-08", { studentId: "stu-22", skillId: "skill-on-task", classId: "cls-10b-ielts", date: TODAY, points: 1 }),
+  pt("pt-09", { studentId: "stu-23", skillId: "skill-excellent", classId: "cls-10b-ielts", date: TODAY, points: 2 }),
+  pt("pt-10", { studentId: "stu-19", skillId: "skill-on-task", classId: "cls-10b-ielts", date: YESTERDAY, points: 1 }),
 ];
 
 export const seedClassTasks: ClassTask[] = [

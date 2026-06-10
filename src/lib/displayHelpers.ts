@@ -1,4 +1,4 @@
-import type { BehaviourSeverity, AttendanceStatus, Student, Teacher } from "@/types";
+import type { AttendanceStatus, Student, Teacher } from "@/types";
 
 function compact(value?: string): string {
   return (value ?? "").trim();
@@ -40,16 +40,6 @@ export function getStudentName(id: string, students: Student[]): string {
   const s = students.find((st) => st.id === id);
   return s ? getStudentDisplayName(s) : "Unknown";
 }
-
-export const SEVERITY_BADGE_VARIANT: Record<
-  BehaviourSeverity,
-  "success" | "warning" | "secondary" | "destructive"
-> = {
-  positive: "success",
-  minor: "warning",
-  moderate: "secondary",
-  major: "destructive",
-};
 
 export const ATTENDANCE_STATUS_COLORS: Record<AttendanceStatus, string> = {
   present: "bg-emerald-100 text-emerald-800",
