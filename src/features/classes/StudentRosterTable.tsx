@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Check,
@@ -8,7 +8,16 @@ import {
   MoreHorizontal,
   Sparkles,
 } from "lucide-react";
-import type { AttendanceRecord, AttendanceStatus, ClassTask, Student, StudentTaskRecord, StudentTaskStatus } from "@/types";
+import type {
+  AttendanceRecord,
+  AttendanceStatus,
+  ClassTask,
+  SchoolClass,
+  Student,
+  StudentTaskRecord,
+  StudentTaskStatus,
+} from "@/types";
+import { ClassPointsToolbar } from "@/features/points/ClassPointsToolbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -48,6 +57,8 @@ const AttendanceIcon: Record<AttendanceStatus, typeof Check> = {
 };
 
 interface StudentRosterTableProps {
+  cls: SchoolClass;
+  sessionDate: string;
   students: Student[];
   activeTasks: ClassTask[];
   studentTaskRecords: StudentTaskRecord[];
@@ -61,6 +72,8 @@ interface StudentRosterTableProps {
 }
 
 export function StudentRosterTable({
+  cls,
+  sessionDate,
   students,
   activeTasks,
   studentTaskRecords,
@@ -73,6 +86,19 @@ export function StudentRosterTable({
   archivedTaskCount,
 }: StudentRosterTableProps) {
   const todayStr = new Date().toISOString().split("T")[0];
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
+    students[0]?.id ?? null
+  );
+
+  useEffect(() => {
+    if (students.length === 0) {
+      setSelectedStudentId(null);
+      return;
+    }
+    if (!selectedStudentId || !students.some((s) => s.id === selectedStudentId)) {
+      setSelectedStudentId(students[0].id);
+    }
+  }, [students, selectedStudentId]);
 
   const recordByTaskAndStudent = useMemo(() => {
     const map = new Map<string, StudentTaskRecord>();
@@ -303,9 +329,19 @@ export function StudentRosterTable({
       {students.length === 0 ? (
         <p className="text-sm text-muted-foreground">No students yet. Add someone to start tracking.</p>
       ) : (
-        <>
+        <div className="sticky top-16 z-20 -mx-6 flex max-h-[min(36rem,calc(100dvh-5.5rem))] flex-col overflow-hidden border-y border-border bg-card shadow-md sm:max-h-[calc(100dvh-5.5rem)]">
+          <div className="shrink-0 border-b border-border bg-card px-4 py-3">
+            <ClassPointsToolbar
+              cls={cls}
+              students={students}
+              sessionDate={sessionDate}
+              selectedStudentId={selectedStudentId}
+            />
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
           <div className="hidden md:block overflow-x-auto">
-            <div className="rounded-xl border border-border overflow-x-auto">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
@@ -318,12 +354,21 @@ export function StudentRosterTable({
                 <TableBody>
                   {students.map((student) => {
                     const pts = pointsTodayByStudent.get(student.id) ?? 0;
+                    const selected = selectedStudentId === student.id;
                     return (
-                      <TableRow key={student.id} className="align-top">
+                      <TableRow
+                        key={student.id}
+                        className={cn(
+                          "cursor-pointer align-top transition-colors",
+                          selected && "bg-primary/5 hover:bg-primary/10"
+                        )}
+                        onClick={() => setSelectedStudentId(student.id)}
+                      >
                         <TableCell>
                           <Link
                             to={`/students/${student.id}`}
                             className="font-semibold text-foreground hover:text-primary"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             {getStudentDisplayName(student)}
                           </Link>
@@ -333,8 +378,12 @@ export function StudentRosterTable({
                             </p>
                           )}
                         </TableCell>
-                        <TableCell>{renderAttendanceCell(student)}</TableCell>
-                        <TableCell>{renderTaskControls(student)}</TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {renderAttendanceCell(student)}
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {renderTaskControls(student)}
+                        </TableCell>
                         <TableCell className="text-right">
                           <span
                             className={cn(
@@ -359,16 +408,32 @@ export function StudentRosterTable({
           <div className="md:hidden space-y-3">
             {students.map((student) => {
               const pts = pointsTodayByStudent.get(student.id) ?? 0;
+              const selected = selectedStudentId === student.id;
               return (
                 <div
                   key={student.id}
-                  className="rounded-xl border border-border bg-card p-4 space-y-3"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedStudentId(student.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedStudentId(student.id);
+                    }
+                  }}
+                  className={cn(
+                    "rounded-xl border bg-card p-4 space-y-3 transition-colors",
+                    selected
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/25"
+                      : "border-border"
+                  )}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link
                         to={`/students/${student.id}`}
                         className="font-semibold text-foreground hover:text-primary transition-colors"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {getStudentDisplayName(student)}
                       </Link>
@@ -392,12 +457,12 @@ export function StudentRosterTable({
                     </span>
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
                     <p className="text-xs text-muted-foreground">Attendance</p>
                     {renderAttendanceButtonsGrid(student)}
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
                     {activeTasks.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
                         {archivedTaskCount > 0
@@ -412,7 +477,8 @@ export function StudentRosterTable({
               );
             })}
           </div>
-        </>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -12,7 +12,6 @@ import {
   X,
   Shield,
   Sparkles,
-  MoreHorizontal,
   Play,
   Award,
 } from "lucide-react";
@@ -61,13 +60,12 @@ import {
   studentTaskStatusLabel,
   studentTaskStatusSelectClass,
 } from "@/lib/studentTaskStatus";
-import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
+import { deadlineDay } from "@/lib/taskUtils";
 import { AddExistingStudentDialog } from "@/features/classes/AddExistingStudentDialog";
 import { StudentFormDialog } from "@/features/students/StudentFormDialog";
 import { StudentImportDialog } from "@/features/students/StudentImportDialog";
 import { ClassTaskFormDialog } from "@/features/tasks/ClassTaskFormDialog";
 import { TaskProgressDialog } from "@/features/tasks/TaskProgressDialog";
-import { ClassPointsPanel } from "@/features/points/ClassPointsPanel";
 import { StudentRosterTable } from "@/features/classes/StudentRosterTable";
 import { ClassTasksSection } from "@/features/classes/ClassTasksSection";
 import type {
@@ -467,13 +465,11 @@ export function ClassDetailPage() {
         </Card>
       )}
 
-      <ClassPointsPanel cls={cls} students={classStudents} sessionDate={attendanceDate} />
-
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Quick class check</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Random student picker for attendance and task updates. Use Class points above for merits.
+            Random student picker for attendance and task updates.
           </p>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
@@ -502,7 +498,7 @@ export function ClassDetailPage() {
               Students
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Mark attendance and task progress for students in this class.
+              Select a student, award points from the toolbar, then mark attendance and tasks in one list.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -554,174 +550,25 @@ export function ClassDetailPage() {
             </DropdownMenu>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 overflow-visible">
           <p className="text-xs text-muted-foreground">
-            Attendance: ✓ present · ✗ absent · clock late · shield excused. Tasks: set status and points; use ··· for feedback and dates.
-            Today column shows net points for the selected date (use Class points above to award).
+            Tap a row to select for points. Attendance: ✓ present · ✗ absent · clock late · shield excused.
+            Tasks: set status and score; use ··· for feedback.
           </p>
-          <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
-            <StudentRosterTable
-              students={classStudents}
-              activeTasks={activeTasksForClass}
-              studentTaskRecords={studentTaskRecords}
-              dayAttendanceRows={dayAttendanceRows}
-              pointsTodayByStudent={pointsTodayByStudent}
-              onMarkAttendance={markAttendance}
-              onTaskStatusChange={onTaskStatusChange}
-              onTaskScoreBlur={onTaskScoreBlur}
-              onOpenProgress={openProgress}
-              archivedTaskCount={archivedTasksForClass.length}
-            />
-          </div>
-
-          <div className="md:hidden space-y-3">
-            {classStudents.map((student) => {
-              const pts = pointsTodayByStudent.get(student.id) ?? 0;
-              const currentAttendanceStatus = getAttendanceStatus(student.id);
-
-              return (
-                <div key={student.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
-                  {/* Section 1 — header */}
-                  <div className="flex items-center justify-between gap-3">
-                    <Link
-                      to={`/students/${student.id}`}
-                      className="font-semibold text-foreground hover:text-primary transition-colors"
-                    >
-                      {getStudentDisplayName(student)}
-                    </Link>
-
-                    <span
-                      className={cn(
-                        "inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-sm font-semibold tabular-nums",
-                        pts > 0 && "text-emerald-600",
-                        pts < 0 && "text-amber-600",
-                        pts === 0 && "text-muted-foreground"
-                      )}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {pts > 0 ? `+${pts}` : pts}
-                    </span>
-                  </div>
-
-                  {/* Section 2 — attendance */}
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground">Attendance</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {attendanceStatuses.map((status) => {
-                        const Icon = AttendanceIcon[status];
-                        const active = currentAttendanceStatus === status;
-
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            title={status}
-                            onClick={() => markAttendance(student.id, status)}
-                            className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-xs font-semibold transition-all",
-                              active
-                                ? `${attendanceBtnClass[status]} ring-2 ring-offset-1 ring-offset-background`
-                                : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
-                            )}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Section 3 — tasks */}
-                  {activeTasksForClass.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-muted-foreground">Tasks</p>
-                      <div className="space-y-2">
-                        {activeTasksForClass.map((task) => {
-                          const rec = getTaskRecord(task.id, student.id);
-                          const overdue = isTaskOverdue(task, todayStr);
-
-                          if (!rec) {
-                            return (
-                              <div
-                                key={task.id}
-                                className="rounded-lg border border-border/80 bg-muted/20 px-2 py-1.5 text-xs text-muted-foreground"
-                              >
-                                <span className="font-medium text-foreground">{task.title}</span> — syncing…
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <div
-                              key={task.id}
-                              className="flex flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-muted/20 px-2 py-1.5"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className="truncate text-xs font-medium text-foreground"
-                                  title={task.title}
-                                >
-                                  {task.title}
-                                  {overdue && (
-                                    <span className="ml-1 text-red-600 dark:text-red-400">(due)</span>
-                                  )}
-                                </p>
-                              </div>
-
-                              <Select
-                                value={rec.status}
-                                onValueChange={(v) =>
-                                  onTaskStatusChange(rec.id, v as StudentTaskStatus)
-                                }
-                              >
-                                <SelectTrigger
-                                  className={cn(
-                                    "h-8 w-37 shrink-0 text-xs",
-                                    studentTaskStatusSelectClass(rec.status)
-                                  )}
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {STUDENT_TASK_STATUS_ORDER.map((s) => (
-                                    <SelectItem key={s} value={s} className="text-xs">
-                                      {studentTaskStatusLabel[s]}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-
-                              <Input
-                                key={`${rec.id}-${rec.updatedAt}`}
-                                type="number"
-                                step={0.5}
-                                placeholder="Pts"
-                                className="h-8 w-16 text-xs"
-                                defaultValue={rec.score != null ? String(rec.score) : ""}
-                                title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
-                                onBlur={(e) => onTaskScoreBlur(rec, e.target.value)}
-                              />
-
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 shrink-0"
-                                title="Feedback, submitted date, full edit"
-                                onClick={() => openProgress(rec, task)}
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <StudentRosterTable
+            cls={cls}
+            sessionDate={attendanceDate}
+            students={classStudents}
+            activeTasks={activeTasksForClass}
+            studentTaskRecords={studentTaskRecords}
+            dayAttendanceRows={dayAttendanceRows}
+            pointsTodayByStudent={pointsTodayByStudent}
+            onMarkAttendance={markAttendance}
+            onTaskStatusChange={onTaskStatusChange}
+            onTaskScoreBlur={onTaskScoreBlur}
+            onOpenProgress={openProgress}
+            archivedTaskCount={archivedTasksForClass.length}
+          />
         </CardContent>
       </Card>
 
