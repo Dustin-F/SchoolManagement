@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -143,7 +144,13 @@ export function TaskProgressDialog({
 
             <div className="space-y-2">
               <Label htmlFor="submittedAt">Submitted date <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input id="submittedAt" type="date" {...register("submittedAt")} />
+              <DatePicker
+                id="submittedAt"
+                value={watch("submittedAt") ?? ""}
+                onChange={(v) => setValue("submittedAt", v, { shouldValidate: true })}
+                placeholder="Pick submitted date"
+                clearable
+              />
             </div>
 
             <div className="space-y-2">

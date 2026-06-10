@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
@@ -629,11 +630,10 @@ export function ClassDetailPage() {
               <label htmlFor="class-attendance-date" className="text-xs font-medium text-muted-foreground whitespace-nowrap">
                 Attendance date
               </label>
-              <Input
+              <DatePicker
                 id="class-attendance-date"
-                type="date"
                 value={attendanceDate}
-                onChange={(e) => setAttendanceDateWithUrl(e.target.value)}
+                onChange={setAttendanceDateWithUrl}
                 className="h-9 w-44"
               />
             </div>

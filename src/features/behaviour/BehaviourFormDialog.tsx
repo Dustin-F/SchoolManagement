@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -171,7 +172,12 @@ export function BehaviourFormDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="date">Date</Label>
-              <Input id="date" type="date" {...register("date")} />
+              <DatePicker
+                id="date"
+                value={watch("date") ?? ""}
+                onChange={(v) => setValue("date", v, { shouldValidate: true })}
+                placeholder="Pick date"
+              />
               {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
             </div>
           </div>

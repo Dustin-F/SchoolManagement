@@ -423,17 +423,25 @@ export const useAppStore = create<AppStore>((set) => {
     },
 
     resetToSeed: () => {
-      storage.clear();
-      set({
-        teachers: loadOrSeed("teachers", seedTeachers),
-        students: loadOrSeed("students", seedStudents),
-        classes: loadOrSeed("classes", seedClasses),
-        subjects: loadOrSeed("subjects", seedSubjects),
-        attendance: loadOrSeed("attendance", seedAttendance),
-        behaviour: loadOrSeed("behaviour", seedBehaviour),
-        classTasks: loadOrSeed("classTasks", seedClassTasks),
-        studentTaskRecords: loadOrSeed("studentTaskRecords", seedStudentTaskRecords),
-      });
+      const next = {
+        teachers: seedTeachers,
+        students: seedStudents,
+        classes: seedClasses,
+        subjects: seedSubjects,
+        attendance: seedAttendance,
+        behaviour: seedBehaviour,
+        classTasks: seedClassTasks,
+        studentTaskRecords: seedStudentTaskRecords,
+      };
+      storage.set("teachers", next.teachers);
+      storage.set("students", next.students);
+      storage.set("classes", next.classes);
+      storage.set("subjects", next.subjects);
+      storage.set("attendance", next.attendance);
+      storage.set("behaviour", next.behaviour);
+      storage.set("classTasks", next.classTasks);
+      storage.set("studentTaskRecords", next.studentTaskRecords);
+      set(next);
     },
   };
 });

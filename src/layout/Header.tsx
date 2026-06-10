@@ -1,7 +1,28 @@
 import { useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, Circle, Loader2, LogOut, Menu, Moon, Settings, Sun } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Circle,
+  Database,
+  Loader2,
+  LogOut,
+  Menu,
+  Moon,
+  Settings,
+  Sun,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +42,7 @@ import {
   type TableSyncHealth,
 } from "@/lib/storage";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store";
 
 const THEME_STORAGE_KEY = "schoolhub-theme";
 
@@ -44,6 +66,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [syncStatus, setSyncStatus] = useState(getSyncStatus());
   const [syncError, setSyncError] = useState(getLastSyncError());
   const [tableHealth, setTableHealth] = useState(getTableSyncHealth);
+  const [demoDialogOpen, setDemoDialogOpen] = useState(false);
+  const resetToSeed = useAppStore((s) => s.resetToSeed);
 
   useEffect(() => {
     setDarkMode(document.documentElement.classList.contains("dark"));
@@ -99,6 +123,12 @@ export function Header({ onMenuClick }: HeaderProps) {
       return;
     }
     toast.success("Signed out.");
+  };
+
+  const handleLoadDemoData = () => {
+    resetToSeed();
+    setDemoDialogOpen(false);
+    toast.success("Demo data loaded. Syncing to cloud…");
   };
 
   const handleToggleTheme = () => {
@@ -202,12 +232,34 @@ export function Header({ onMenuClick }: HeaderProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setDemoDialogOpen(true)}>
+              <Database className="mr-2 h-4 w-4" />
+              Load demo data
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <AlertDialog open={demoDialogOpen} onOpenChange={setDemoDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Load demo data?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This replaces all your current school data with sample teachers, students, classes,
+                attendance, behaviour notes, and tasks. Your cloud data will be overwritten after
+                sync.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleLoadDemoData}>Load demo data</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </header>
   );

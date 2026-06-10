@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckboxList } from "@/components/CheckboxList";
@@ -52,6 +53,8 @@ export function StudentFormDialog({
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<StudentFormData>({
     resolver: zodResolver(studentSchema),
@@ -182,7 +185,13 @@ export function StudentFormDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="dateOfBirth">Date of Birth</Label>
-              <Input id="dateOfBirth" type="date" {...register("dateOfBirth")} />
+              <DatePicker
+                id="dateOfBirth"
+                value={watch("dateOfBirth") ?? ""}
+                onChange={(v) => setValue("dateOfBirth", v, { shouldValidate: true })}
+                placeholder="Pick date of birth"
+                clearable
+              />
             </div>
           </div>
 
