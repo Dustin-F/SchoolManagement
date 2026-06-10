@@ -552,7 +552,7 @@ export function ClassDetailPage() {
         </CardHeader>
         <CardContent className="space-y-3 overflow-visible">
           <p className="text-xs text-muted-foreground">
-            Drag the grip on a seat card to rearrange. Tap the card for attendance, tasks, and grades.
+            Drag the grip on a seat card to rearrange. Tap the card for attendance, tasks, grades, and points.
           </p>
           <StudentRosterTable
             cls={cls}

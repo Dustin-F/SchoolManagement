@@ -205,14 +205,16 @@ export function StudentRosterTable({
         <p className="text-sm text-muted-foreground">No students yet. Add someone to start tracking.</p>
       ) : (
         <>
-          <div className="sticky top-16 z-20 -mx-6 border-y border-border bg-card/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90">
-            <ClassPointsToolbar
-              cls={cls}
-              students={students}
-              sessionDate={sessionDate}
-              selectedStudentId={selectedStudentId}
-            />
-          </div>
+          {viewMode === "list" && (
+            <div className="sticky top-16 z-20 -mx-6 border-y border-border bg-card/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90">
+              <ClassPointsToolbar
+                cls={cls}
+                students={students}
+                sessionDate={sessionDate}
+                selectedStudentId={selectedStudentId}
+              />
+            </div>
+          )}
 
           {renderViewToggle()}
 
@@ -232,6 +234,9 @@ export function StudentRosterTable({
                 onOpenChange={(open) => {
                   if (!open) setSeatDialogStudentId(null);
                 }}
+                cls={cls}
+                students={students}
+                sessionDate={sessionDate}
                 student={seatDialogStudent}
                 pointsToday={
                   seatDialogStudent

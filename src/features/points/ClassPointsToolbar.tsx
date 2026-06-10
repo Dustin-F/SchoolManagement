@@ -15,6 +15,8 @@ interface ClassPointsToolbarProps {
   students: Student[];
   sessionDate: string;
   selectedStudentId: string | null;
+  /** Compact layout for inside the student detail dialog. */
+  embedded?: boolean;
 }
 
 export function ClassPointsToolbar({
@@ -22,6 +24,7 @@ export function ClassPointsToolbar({
   students,
   sessionDate,
   selectedStudentId,
+  embedded = false,
 }: ClassPointsToolbarProps) {
   const behaviourSkills = useAppStore((s) => s.behaviourSkills);
   const pointEvents = useAppStore((s) => s.pointEvents);
@@ -80,23 +83,25 @@ export function ClassPointsToolbar({
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-sm font-medium">
             <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" />
-            Points
+            {embedded ? "Award points" : "Points"}
           </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {selectedStudent ? (
-              <>
-                Awarding to{" "}
-                <span className="font-semibold text-foreground">
-                  {getStudentDisplayName(selectedStudent)}
-                </span>
-              </>
-            ) : (
-              "Tap a student row below, then tap a skill."
-            )}
-            <span className="mx-1.5 text-border">·</span>
-            Class today:{" "}
-            <span className="font-semibold text-foreground tabular-nums">{classTodayTotal}</span>
-          </p>
+          {!embedded && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {selectedStudent ? (
+                <>
+                  Awarding to{" "}
+                  <span className="font-semibold text-foreground">
+                    {getStudentDisplayName(selectedStudent)}
+                  </span>
+                </>
+              ) : (
+                "Tap a student row below, then tap a skill."
+              )}
+              <span className="mx-1.5 text-border">·</span>
+              Class today:{" "}
+              <span className="font-semibold text-foreground tabular-nums">{classTodayTotal}</span>
+            </p>
+          )}
         </div>
         <Button asChild type="button" variant="outline" size="sm" className="shrink-0">
           <Link to="/points?tab=skills">
