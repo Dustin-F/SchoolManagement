@@ -193,6 +193,7 @@ const G_PULLOUT = [studentId(7), studentId(17), studentId(37)];
 export const seedClasses: SchoolClass[] = [
   ent<SchoolClass>("cls-9a-math", {
     name: "9A",
+    seatColumns: 5,
     classroomNumber: "101",
     subjectId: "sub-math",
     teacherId: "tch-li",
@@ -231,6 +232,8 @@ export const seedClasses: SchoolClass[] = [
   }),
   ent<SchoolClass>("cls-10b-ielts", {
     name: "10B",
+    seatColumns: 5,
+    seatRows: 4,
     classroomNumber: "202",
     subjectId: "sub-ielts",
     teacherId: "tch-mike",
@@ -287,6 +290,7 @@ export const seedClasses: SchoolClass[] = [
   }),
   ent<SchoolClass>("cls-9-pullout", {
     name: "9 Pull-out IELTS",
+    seatColumns: 3,
     classroomNumber: "Support 1",
     subjectId: "sub-ielts",
     teacherId: "tch-mike",

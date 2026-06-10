@@ -68,11 +68,14 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
       coTeacherIds: [],
       studentIds: [],
       schedule: [],
+      seatColumns: 5,
+      seatRows: undefined,
     },
   });
 
   const teacherIdValue = watch("teacherId");
   const subjectIdValue = watch("subjectId");
+  const seatColumnsValue = watch("seatColumns");
 
   useEffect(() => {
     if (editingClass) {
@@ -84,6 +87,8 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
         coTeacherIds: editingClass.coTeacherIds,
         studentIds: editingClass.studentIds,
         schedule: editingClass.schedule,
+        seatColumns: editingClass.seatColumns ?? 5,
+        seatRows: editingClass.seatRows,
       });
       setCoTeacherIds(editingClass.coTeacherIds);
       setStudentIds(editingClass.studentIds);
@@ -97,6 +102,8 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
         coTeacherIds: [],
         studentIds: [],
         schedule: [],
+        seatColumns: 5,
+        seatRows: undefined,
       });
       setCoTeacherIds([]);
       setStudentIds([]);
@@ -158,6 +165,49 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
             <div className="space-y-2">
               <Label htmlFor="classroomNumber">Classroom Number</Label>
               <Input id="classroomNumber" placeholder="e.g. 101, A-203" {...register("classroomNumber")} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Seating columns</Label>
+              <Select
+                value={String(seatColumnsValue ?? 5)}
+                onValueChange={(val) => setValue("seatColumns", Number(val), { shouldValidate: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} columns
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Seating rows</Label>
+              <Select
+                value={watch("seatRows") != null ? String(watch("seatRows")) : "auto"}
+                onValueChange={(val) =>
+                  setValue("seatRows", val === "auto" ? undefined : Number(val), {
+                    shouldValidate: true,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Auto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto (fit students)</SelectItem>
+                  {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} rows
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

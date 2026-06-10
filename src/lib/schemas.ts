@@ -20,6 +20,8 @@ export const classSchema = z.object({
   coTeacherIds: z.array(z.string()),
   studentIds: z.array(z.string()),
   schedule: z.array(scheduleEntrySchema),
+  seatColumns: z.number().int().min(2).max(12).optional(),
+  seatRows: z.number().int().min(1).max(15).optional(),
 });
 export type ClassFormData = z.infer<typeof classSchema>;
 

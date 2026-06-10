@@ -53,6 +53,12 @@ export interface SchoolClass extends BaseEntity {
   schedule: ScheduleEntry[];
   /** School-wide skills pinned to this class toolbar (skill ids). */
   pinnedSkillIds?: string[];
+  /** Seating grid columns (2–12). */
+  seatColumns?: number;
+  /** Fixed row count; omit for auto rows from student count. */
+  seatRows?: number;
+  /** Row-major seat layout (`null` = empty desk). Length = seatColumns × seatRows. */
+  seatGrid?: (string | null)[];
 }
 
 export interface Subject extends BaseEntity {

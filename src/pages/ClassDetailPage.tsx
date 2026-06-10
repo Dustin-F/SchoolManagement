@@ -75,6 +75,7 @@ import type {
   StudentTaskStatus,
 } from "@/types";
 import { pointsByStudent } from "@/lib/pointsUtils";
+import { resolveSeatGrid, studentsFromSeatGrid } from "@/lib/seatingUtils";
 
 export function ClassDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -201,11 +202,10 @@ export function ClassDetailPage() {
   const mainTeacher = teachers.find((t) => t.id === (cls?.teacherId ?? ""));
   const coTeachers = teachers.filter((t) => (cls?.coTeacherIds ?? []).includes(t.id));
   const classStudents = useMemo(() => {
-    const set = new Set(cls?.studentIds ?? []);
-    return students
-      .filter((s) => set.has(s.id))
-      .sort((a, b) => getStudentDisplayName(a).localeCompare(getStudentDisplayName(b)));
-  }, [students, cls?.studentIds]);
+    if (!cls) return [];
+    const grid = resolveSeatGrid(cls, cls.studentIds);
+    return studentsFromSeatGrid(students, grid);
+  }, [students, cls]);
 
   const pointsTodayByStudent = useMemo(() => {
     if (!cls?.id) return new Map<string, number>();
@@ -498,7 +498,7 @@ export function ClassDetailPage() {
               Students
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Lesson view for points and attendance. Switch to Tasks &amp; grades when marking homework.
+              Seating plan for points and attendance. Drag cards to match your room layout.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -552,7 +552,7 @@ export function ClassDetailPage() {
         </CardHeader>
         <CardContent className="space-y-3 overflow-visible">
           <p className="text-xs text-muted-foreground">
-            Tap a row to select for points. Use the attendance chip to mark status. Tap a task summary to edit that student&apos;s work.
+            Drag the grip on a seat card to rearrange. Tap the card for attendance, tasks, and grades.
           </p>
           <StudentRosterTable
             cls={cls}

@@ -30,6 +30,13 @@
   --color-sidebar-accent: var(--sidebar-accent);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-group(*) {
+    animation-duration: 280ms;
+    animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #0f172a;

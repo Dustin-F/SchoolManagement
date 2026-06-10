@@ -4,8 +4,24 @@ function compact(value?: string): string {
   return (value ?? "").trim();
 }
 
+export function getStudentEnglishName(student: Student): string {
+  return `${compact(student.firstName)} ${compact(student.lastName)}`.trim();
+}
+
+export function getStudentSeatNames(student: Student): {
+  english?: string;
+  pinyin?: string;
+  chinese?: string;
+} {
+  return {
+    english: getStudentEnglishName(student) || undefined,
+    pinyin: compact(student.pinyinName) || undefined,
+    chinese: compact(student.chineseName) || undefined,
+  };
+}
+
 export function getStudentDisplayName(student: Student): string {
-  const english = `${compact(student.firstName)} ${compact(student.lastName)}`.trim();
+  const english = getStudentEnglishName(student);
   if (english) return english;
   if (compact(student.chineseName)) return compact(student.chineseName);
   if (compact(student.pinyinName)) return compact(student.pinyinName);

@@ -30,6 +30,7 @@ import {
   syncRecordsAfterRosterChange,
   taskIdsForClass,
 } from "@/lib/classTaskSync";
+import { orderStudentIdsByGrid } from "@/lib/seatingUtils";
 
 function loadOrSeed<T>(key: string, seed: T[]): T[] {
   const stored = storage.get<T[]>(key);
@@ -225,7 +226,13 @@ export const useAppStore = create<AppStore>((set) => {
         const prev = state.classes.find((c) => c.id === id);
         if (!prev) return {};
         const ts = timestamp();
-        const next = { ...prev, ...data, updatedAt: ts };
+        let next = { ...prev, ...data, updatedAt: ts };
+        if (data.seatGrid !== undefined) {
+          next = {
+            ...next,
+            studentIds: orderStudentIdsByGrid(prev.studentIds, data.seatGrid),
+          };
+        }
         let studentTaskRecords = state.studentTaskRecords;
         if (data.studentIds !== undefined) {
           studentTaskRecords = syncRecordsAfterRosterChange(
