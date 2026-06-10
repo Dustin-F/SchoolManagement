@@ -498,7 +498,7 @@ export function ClassDetailPage() {
               Students
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Select a student, award points from the toolbar, then mark attendance and tasks in one list.
+              Lesson view for points and attendance. Switch to Tasks &amp; grades when marking homework.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -552,8 +552,7 @@ export function ClassDetailPage() {
         </CardHeader>
         <CardContent className="space-y-3 overflow-visible">
           <p className="text-xs text-muted-foreground">
-            Tap a row to select for points. Attendance: ✓ present · ✗ absent · clock late · shield excused.
-            Tasks: set status and score; use ··· for feedback.
+            Tap a row to select for points. Use the attendance chip to mark status. Tap a task summary to edit that student&apos;s work.
           </p>
           <StudentRosterTable
             cls={cls}
