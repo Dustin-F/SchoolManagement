@@ -1,19 +1,18 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import {
   DndContext,
-  DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
+  pointerWithin,
   useDraggable,
   useDroppable,
   type DragEndEvent,
-  type DragStartEvent,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Minus, Plus, Sparkles } from "lucide-react";
 import type { AttendanceStatus, SchoolClass, Student } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -39,6 +38,7 @@ import {
 } from "@/lib/seatingUtils";
 import { seatViewTransitionName, withViewTransition } from "@/lib/viewTransition";
 import { cn } from "@/lib/utils";
+import { HintTooltip } from "@/components/ui/hint-tooltip";
 import type { CSSProperties } from "react";
 
 const attendanceDotClass: Record<AttendanceStatus, string> = {
@@ -59,6 +59,7 @@ interface ClassSeatingGridProps {
   cls: SchoolClass;
   students: Student[];
   selectedStudentId: string | null;
+  bulkSelectedIds?: Set<string>;
   onSelectStudent: (studentId: string) => void;
   pointsTodayByStudent: Map<string, number>;
   getAttendanceStatus: (studentId: string) => AttendanceStatus | null;
@@ -73,6 +74,7 @@ interface DragHandleProps {
 interface SeatCardProps {
   student: Student;
   selected: boolean;
+  bulkSelected?: boolean;
   points: number;
   attendance: AttendanceStatus | null;
   onSelect: () => void;
@@ -84,6 +86,7 @@ interface SeatCardProps {
 function SeatCard({
   student,
   selected,
+  bulkSelected,
   points,
   attendance,
   onSelect,
@@ -94,14 +97,16 @@ function SeatCard({
   const names = getStudentSeatNames(student);
   const hasAnyName = names.english || names.pinyin || names.chinese;
 
-  return (
+  const card = (
     <div
       className={cn(
-        "relative flex h-full min-h-[7.5rem] flex-col items-center justify-center rounded-xl border p-2 text-center",
-        selected
-          ? "border-primary bg-primary/10 ring-2 ring-primary/30"
-          : "border-border bg-card hover:border-primary/40",
-        isDragOverlay && "shadow-lg ring-2 ring-primary/40"
+        "relative flex h-full min-h-[7.5rem] cursor-pointer flex-col items-center justify-center rounded-xl border p-2 text-center",
+        bulkSelected
+          ? "border-blue-500 bg-blue-500/10 ring-2 ring-blue-500/30"
+          : selected
+            ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+            : "border-border bg-card hover:border-primary/40",
+        isDragOverlay && "h-full shadow-lg ring-2 ring-primary/40"
       )}
       style={style}
       onClick={onSelect}
@@ -115,18 +120,19 @@ function SeatCard({
       tabIndex={0}
     >
       {dragHandle ? (
-        <button
-          type="button"
-          ref={dragHandle.ref}
-          className="absolute left-1 top-1 z-10 flex h-7 w-7 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-muted/80 active:cursor-grabbing"
-          title="Drag to move seat"
-          aria-label="Drag to move seat"
-          onClick={(e) => e.stopPropagation()}
-          {...dragHandle.listeners}
-          {...dragHandle.attributes}
-        >
-          <GripVertical className="h-4 w-4 opacity-70" />
-        </button>
+        <HintTooltip content="Drag to rearrange this seat.">
+          <button
+            type="button"
+            ref={dragHandle.ref}
+            className="absolute left-1 top-1 z-10 flex h-7 w-7 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-muted/80 active:cursor-grabbing"
+            aria-label="Drag to move seat"
+            onClick={(e) => e.stopPropagation()}
+            {...dragHandle.listeners}
+            {...dragHandle.attributes}
+          >
+            <GripVertical className="h-4 w-4 opacity-70" />
+          </button>
+        </HintTooltip>
       ) : (
         <div
           className="absolute left-1.5 top-1.5 text-muted-foreground"
@@ -145,6 +151,13 @@ function SeatCard({
         aria-hidden
       />
 
+      {student.photoUrl && (
+        <img
+          src={student.photoUrl}
+          alt=""
+          className="mb-1 h-8 w-8 rounded-full object-cover ring-1 ring-border"
+        />
+      )}
       <div className="mt-1 flex w-full min-w-0 flex-col items-center justify-center gap-0.5 px-0.5">
         {names.english && (
           <p className="line-clamp-2 w-full text-[11px] font-semibold leading-tight text-foreground sm:text-xs">
@@ -178,6 +191,14 @@ function SeatCard({
       </span>
     </div>
   );
+
+  if (isDragOverlay) return card;
+
+  return (
+    <HintTooltip content="Open attendance, tasks, grades, and points.">
+      {card}
+    </HintTooltip>
+  );
 }
 
 function EmptySeatCell({
@@ -206,6 +227,7 @@ function SeatGridCell({
   seatIndex,
   student,
   selected,
+  bulkSelected,
   points,
   attendance,
   onSelect,
@@ -213,6 +235,7 @@ function SeatGridCell({
   seatIndex: number;
   student: Student | null;
   selected: boolean;
+  bulkSelected?: boolean;
   points: number;
   attendance: AttendanceStatus | null;
   onSelect: () => void;
@@ -230,6 +253,7 @@ function SeatGridCell({
     setNodeRef: setDragRef,
     setActivatorNodeRef,
     isDragging,
+    transform,
   } = useDraggable({
     id: dragId,
     disabled: !student,
@@ -238,16 +262,33 @@ function SeatGridCell({
 
   const isDropTarget = isOver && !isDragging;
 
+  const dragStyle: CSSProperties | undefined = transform
+    ? {
+        transform: CSS.Translate.toString(transform),
+        zIndex: 50,
+      }
+    : undefined;
+
   return (
     <div ref={setDropRef} className="relative h-full">
       {!student ? (
         <EmptySeatCell isDropTarget={isDropTarget} />
       ) : (
         <>
-          <div ref={setDragRef} className={cn("h-full", isDragging && "invisible")}>
+          {isDragging && (
+            <div className="pointer-events-none absolute inset-0">
+              <EmptySeatCell isVacated />
+            </div>
+          )}
+          <div
+            ref={setDragRef}
+            className={cn("h-full", isDragging && "relative cursor-grabbing")}
+            style={dragStyle}
+          >
             <SeatCard
               student={student}
               selected={selected}
+              bulkSelected={bulkSelected}
               points={points}
               attendance={attendance}
               onSelect={onSelect}
@@ -256,14 +297,14 @@ function SeatGridCell({
                 listeners,
                 attributes,
               }}
-              style={{ viewTransitionName: seatViewTransitionName(student.id) } as CSSProperties}
+              isDragOverlay={isDragging}
+              style={
+                isDragging
+                  ? undefined
+                  : ({ viewTransitionName: seatViewTransitionName(student.id) } as CSSProperties)
+              }
             />
           </div>
-          {isDragging && (
-            <div className="absolute inset-0">
-              <EmptySeatCell isVacated />
-            </div>
-          )}
         </>
       )}
       {student && isDropTarget && (
@@ -277,6 +318,7 @@ export function ClassSeatingGrid({
   cls,
   students,
   selectedStudentId,
+  bulkSelectedIds,
   onSelectStudent,
   pointsTodayByStudent,
   getAttendanceStatus,
@@ -287,21 +329,13 @@ export function ClassSeatingGrid({
   const grid = useMemo(() => resolveSeatGrid(cls, enrolledIds), [cls, enrolledIds]);
   const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
 
-  const [activeCellId, setActiveCellId] = useState<string | null>(null);
-
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
-
-  const activeIndex = activeCellId ? parseSeatCellId(activeCellId) : null;
-  const activeStudentId =
-    activeIndex != null && activeIndex >= 0 ? grid[activeIndex] : null;
-  const activeStudent = activeStudentId ? studentById.get(activeStudentId) : null;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
+  );
 
   const persistGrid = (nextGrid: (string | null)[]) => {
     updateClass(cls.id, { seatGrid: nextGrid });
-  };
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveCellId(String(event.active.id));
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -314,8 +348,6 @@ export function ClassSeatingGrid({
       (over?.data.current?.seatIndex as number | undefined) ??
       (over ? parseSeatCellId(String(over.id)) : null);
 
-    setActiveCellId(null);
-
     if (from == null || to == null || from === to) return;
 
     const nextGrid = swapSeatCells(grid, from, to);
@@ -324,16 +356,12 @@ export function ClassSeatingGrid({
     });
   };
 
-  const handleDragCancel = () => setActiveCellId(null);
-
   return (
     <div className="space-y-2">
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
+        collisionDetection={pointerWithin}
         onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
       >
         <div
           className="grid gap-2 sm:gap-3"
@@ -346,7 +374,12 @@ export function ClassSeatingGrid({
                 key={seatCellId(index)}
                 seatIndex={index}
                 student={student ?? null}
-                selected={!!studentId && selectedStudentId === studentId}
+                selected={
+                  !!studentId &&
+                  selectedStudentId === studentId &&
+                  bulkSelectedIds === undefined
+                }
+                bulkSelected={!!studentId && bulkSelectedIds?.has(studentId)}
                 points={studentId ? (pointsTodayByStudent.get(studentId) ?? 0) : 0}
                 attendance={studentId ? getAttendanceStatus(studentId) : null}
                 onSelect={() => studentId && onSelectStudent(studentId)}
@@ -354,21 +387,6 @@ export function ClassSeatingGrid({
             );
           })}
         </div>
-
-        <DragOverlay dropAnimation={null}>
-          {activeStudent ? (
-            <SeatCard
-              student={activeStudent}
-              selected={selectedStudentId === activeStudent.id}
-              points={pointsTodayByStudent.get(activeStudent.id) ?? 0}
-              attendance={getAttendanceStatus(activeStudent.id)}
-              onSelect={() => {}}
-              isDragOverlay
-            />
-          ) : activeCellId ? (
-            <EmptySeatCell isDragOverlay />
-          ) : null}
-        </DragOverlay>
       </DndContext>
     </div>
   );
@@ -494,9 +512,7 @@ export function SeatLayoutPicker({ cls }: SeatLayoutPickerProps) {
           Fixed rows
         </Button>
         <span className="text-xs text-muted-foreground">
-          {columns}×{rows} = {columns * rows} desks · {enrolledIds.length} students · drag{" "}
-          <GripVertical className="inline h-3 w-3 align-text-bottom" /> to move · tap card for
-          details
+          {columns}×{rows} desks · {enrolledIds.length} students
         </span>
       </div>
     </div>

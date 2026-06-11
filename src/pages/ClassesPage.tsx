@@ -22,6 +22,7 @@ import { useAppStore } from "@/store";
 import { getTeacherDisplayName } from "@/lib/displayHelpers";
 import { formatScheduleSummary } from "@/lib/utils";
 import type { SchoolClass } from "@/types";
+import { TodaysLessonsCard } from "@/features/dashboard/TodaysLessonsCard";
 
 export function ClassesPage() {
   const classes = useAppStore((s) => s.classes);
@@ -61,7 +62,7 @@ export function ClassesPage() {
   };
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Classes"
         description="Manage your school classes."
@@ -72,6 +73,8 @@ export function ClassesPage() {
           </Button>
         }
       />
+
+      <TodaysLessonsCard />
 
       {classes.length === 0 ? (
         <EmptyState

@@ -1,9 +1,31 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useMemo, useState } from "react";
-import { ArrowLeft, User, School, Calendar, Sparkles, ClipboardList, Archive, ChevronDown } from "lucide-react";
+import {
+  ArrowLeft,
+  User,
+  School,
+  Calendar,
+  Sparkles,
+  ClipboardList,
+  Archive,
+  ChevronDown,
+  Pencil,
+  MoreHorizontal,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { StudentFormDialog } from "@/features/students/StudentFormDialog";
+import { TaskProgressDialog } from "@/features/tasks/TaskProgressDialog";
 import {
   Table,
   TableBody,
@@ -17,7 +39,13 @@ import { cn, formatDate } from "@/lib/utils";
 import { ATTENDANCE_STATUS_COLORS, getStudentDisplayName } from "@/lib/displayHelpers";
 import { skillButtonClass } from "@/lib/pointsUtils";
 import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
-import { studentTaskStatusBadgeClass, studentTaskStatusLabel } from "@/lib/studentTaskStatus";
+import {
+  STUDENT_TASK_STATUS_ORDER,
+  studentTaskStatusBadgeClass,
+  studentTaskStatusLabel,
+  studentTaskStatusSelectClass,
+} from "@/lib/studentTaskStatus";
+import type { ClassTask, StudentTaskRecord, StudentTaskStatus } from "@/types";
 
 export function StudentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -29,6 +57,11 @@ export function StudentDetailPage() {
   const behaviourSkills = useAppStore((s) => s.behaviourSkills);
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
+  const updateStudentTaskRecord = useAppStore((s) => s.updateStudentTaskRecord);
+
+  const [editStudentOpen, setEditStudentOpen] = useState(false);
+  const [progressRecord, setProgressRecord] = useState<StudentTaskRecord | null>(null);
+  const [progressTask, setProgressTask] = useState<ClassTask | null>(null);
 
   const student = students.find((s) => s.id === id);
 
@@ -78,6 +111,68 @@ export function StudentDetailPage() {
 
   const [archivedTasksOpen, setArchivedTasksOpen] = useState(false);
 
+  const openTaskProgress = (record: StudentTaskRecord, task: ClassTask) => {
+    setProgressRecord(record);
+    setProgressTask(task);
+  };
+
+  const onTaskStatusChange = (recordId: string, status: StudentTaskStatus) => {
+    updateStudentTaskRecord(recordId, { status });
+    toast.success("Task status updated.");
+  };
+
+  const onTaskScoreBlur = (record: StudentTaskRecord, raw: string) => {
+    const trimmed = raw.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    if (next !== record.score && (trimmed === "" || Number.isFinite(next))) {
+      updateStudentTaskRecord(record.id, { score: next });
+      toast.success("Score saved.");
+    }
+  };
+
+  const renderTaskControls = (task: ClassTask, record: StudentTaskRecord, muted = false) => (
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/80 pt-3">
+      <Select value={record.status} onValueChange={(v) => onTaskStatusChange(record.id, v as StudentTaskStatus)}>
+        <SelectTrigger
+          className={cn(
+            "h-8 w-[8.5rem] text-xs",
+            studentTaskStatusSelectClass(record.status),
+            muted && "opacity-90"
+          )}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {STUDENT_TASK_STATUS_ORDER.map((s) => (
+            <SelectItem key={s} value={s} className="text-xs">
+              {studentTaskStatusLabel[s]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        key={`${record.id}-${record.updatedAt}`}
+        type="number"
+        step={0.5}
+        placeholder="Score"
+        className="h-8 w-20 text-xs"
+        defaultValue={record.score != null ? String(record.score) : ""}
+        title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
+        onBlur={(e) => onTaskScoreBlur(record, e.target.value)}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-8 text-xs"
+        onClick={() => openTaskProgress(record, task)}
+      >
+        <MoreHorizontal className="mr-1 h-3.5 w-3.5" />
+        Details
+      </Button>
+    </div>
+  );
+
   if (!student) {
     return (
       <div className="py-20 text-center">
@@ -104,12 +199,20 @@ export function StudentDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-4">
         <Link to="/students">
           <Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button>
         </Link>
+        {student.photoUrl && (
+          <img
+            src={student.photoUrl}
+            alt=""
+            className="h-14 w-14 rounded-full object-cover ring-2 ring-primary/20"
+          />
+        )}
         <div>
-          <h2 className="text-2xl font-bold">{getStudentDisplayName(student)}</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-gradient">{getStudentDisplayName(student)}</h2>
           {(student.chineseName || student.pinyinName) && (
             <p className="text-sm text-muted-foreground">
               {student.chineseName ? `中文: ${student.chineseName}` : ""}
@@ -123,6 +226,11 @@ export function StudentDetailPage() {
             </p>
           )}
         </div>
+        </div>
+        <Button type="button" onClick={() => setEditStudentOpen(true)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit student
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -142,12 +250,16 @@ export function StudentDetailPage() {
             {student.pinyinName && <p>Pinyin: {student.pinyinName}</p>}
             {student.dateOfBirth && <p>Born: {formatDate(student.dateOfBirth)}</p>}
             {student.email && <p>{student.email}</p>}
+            {student.notes && (
+              <p className="border-t border-border pt-2 text-muted-foreground">{student.notes}</p>
+            )}
             {!student.firstName &&
               !student.lastName &&
               !student.chineseName &&
               !student.pinyinName &&
               !student.dateOfBirth &&
-              !student.email && <p className="text-muted-foreground">No extra info</p>}
+              !student.email &&
+              !student.notes && <p className="text-muted-foreground">No extra info</p>}
           </CardContent>
         </Card>
 
@@ -253,10 +365,11 @@ export function StudentDetailPage() {
                               </span>
                             </div>
                             {record.feedback && (
-                              <p className="mt-2 text-xs text-muted-foreground border-t border-border pt-2">
+                              <p className="mt-2 text-xs text-muted-foreground">
                                 Feedback: {record.feedback}
                               </p>
                             )}
+                            {renderTaskControls(task, record)}
                           </div>
                         );
                       })}
@@ -316,10 +429,11 @@ export function StudentDetailPage() {
                                 <span>Score: {record.score != null ? record.score : "—"}</span>
                               </div>
                               {record.feedback && (
-                                <p className="mt-2 text-xs border-t border-border pt-2">
+                                <p className="mt-2 text-xs">
                                   Feedback: {record.feedback}
                                 </p>
                               )}
+                              {renderTaskControls(task, record, true)}
                             </div>
                           ))}
                         </div>
@@ -433,6 +547,26 @@ export function StudentDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <StudentFormDialog
+        open={editStudentOpen}
+        onOpenChange={setEditStudentOpen}
+        editingStudent={student}
+      />
+
+      <TaskProgressDialog
+        open={progressRecord !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setProgressRecord(null);
+            setProgressTask(null);
+          }
+        }}
+        record={progressRecord}
+        studentName={getStudentDisplayName(student)}
+        taskTitle={progressTask?.title ?? ""}
+        maxScore={progressTask?.maxScore}
+      />
     </div>
   );
 }

@@ -57,6 +57,14 @@ const tableHealth = new Map<string, TableSyncHealth>();
 const syncListeners = new Set<(status: SyncStatus) => void>();
 const errorListeners = new Set<(error: SyncErrorInfo | null) => void>();
 const healthListeners = new Set<(health: TableSyncHealth[]) => void>();
+const pendingListeners = new Set<(count: number) => void>();
+
+function notifyPendingListeners() {
+  const count = pendingKeys.size;
+  for (const listener of pendingListeners) {
+    listener(count);
+  }
+}
 
 function buildDefaultTableHealth(): TableSyncHealth[] {
   return ALL_SYNC_TABLES.map((table) => ({
@@ -152,8 +160,16 @@ export function subscribeSyncStatus(listener: (status: SyncStatus) => void) {
   };
 }
 
-export function migrateStudentTaskRecordsCompletedField(): void {
-  // No-op in cloud storage mode.
+export function getPendingSyncCount(): number {
+  return pendingKeys.size;
+}
+
+export function subscribePendingSync(listener: (count: number) => void) {
+  pendingListeners.add(listener);
+  listener(pendingKeys.size);
+  return () => {
+    pendingListeners.delete(listener);
+  };
 }
 
 function schedulePersist(keys: StorageKey[]) {
@@ -163,6 +179,7 @@ function schedulePersist(keys: StorageKey[]) {
   }
   if (!currentUserId || !getStateSnapshot) return;
   keys.forEach((k) => pendingKeys.add(k));
+  notifyPendingListeners();
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     void persistNow();
@@ -174,6 +191,7 @@ async function persistNow() {
   const payload = getStateSnapshot();
   const keys = Array.from(pendingKeys);
   pendingKeys.clear();
+  notifyPendingListeners();
   if (keys.length === 0) return;
   setSyncStatus("syncing");
   let hadFailure = false;

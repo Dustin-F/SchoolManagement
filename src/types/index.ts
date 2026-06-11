@@ -25,6 +25,8 @@ export interface Student extends BaseEntity {
   parentName?: string;
   parentPhone?: string;
   notes?: string;
+  /** Optional photo URL (hosted image). */
+  photoUrl?: string;
 }
 
 export type DayOfWeek =
@@ -41,6 +43,12 @@ export interface ScheduleEntry {
   dayOfWeek: DayOfWeek;
   startTime: string;
   endTime: string;
+}
+
+export interface RubricCriterion {
+  id: string;
+  label: string;
+  maxPoints?: number;
 }
 
 export interface SchoolClass extends BaseEntity {
@@ -69,15 +77,23 @@ export interface Subject extends BaseEntity {
 
 export type AttendanceStatus = "present" | "absent" | "late" | "excused";
 
+export type AttendanceReasonCode =
+  | "illness"
+  | "appointment"
+  | "family"
+  | "transport"
+  | "other";
+
 export interface AttendanceRecord extends BaseEntity {
   studentId: string;
   classId: string;
   date: string;
   status: AttendanceStatus;
   notes?: string;
+  reasonCode?: AttendanceReasonCode;
 }
 
-export type SkillType = "positive" | "needs_work";
+export type SkillType = "positive" | "negative";
 
 /** School-wide merit / reminder skill (ClassDojo-style). */
 export interface BehaviourSkill extends BaseEntity {
@@ -87,6 +103,8 @@ export interface BehaviourSkill extends BaseEntity {
   type: SkillType;
   active: boolean;
   sortOrder: number;
+  /** Parent-facing explanation when sharing reports. */
+  parentDescription?: string;
 }
 
 /** A single point award during class. */
@@ -120,6 +138,7 @@ export interface ClassTask extends BaseEntity {
   maxScore?: number | null;
   /** When true, hidden from the main class workspace; see archived section. */
   archived?: boolean;
+  rubric?: RubricCriterion[];
 }
 
 export type StudentTaskStatus = "not_started" | "in_progress" | "completed" | "missing";
@@ -132,6 +151,8 @@ export interface StudentTaskRecord {
   score: number | null;
   feedback?: string;
   submittedAt?: string | null;
+  /** Scores keyed by rubric criterion id. */
+  criterionScores?: Record<string, number>;
   updatedAt: string;
 }
 

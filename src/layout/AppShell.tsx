@@ -3,11 +3,13 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { useState } from "react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   return (
-    <div className="min-h-screen bg-background">
+    <TooltipProvider delayDuration={300}>
+    <div className="min-h-screen">
       {/* Mobile sidebar drawer */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-64 p-0">
@@ -27,5 +29,6 @@ export function AppShell() {
         </main>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

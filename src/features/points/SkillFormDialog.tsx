@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { behaviourSkillSchema, type BehaviourSkillFormData } from "@/lib/schemas";
 import type { BehaviourSkill } from "@/types";
+import { SkillEmojiPicker } from "@/features/points/SkillEmojiPicker";
 
 interface SkillFormDialogProps {
   open: boolean;
@@ -56,10 +57,12 @@ export function SkillFormDialog({
       type: "positive",
       active: true,
       sortOrder: nextSortOrder,
+      parentDescription: "",
     },
   });
 
   const typeValue = watch("type");
+  const emojiValue = watch("emoji") ?? "";
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +74,7 @@ export function SkillFormDialog({
         type: editingSkill.type,
         active: editingSkill.active,
         sortOrder: editingSkill.sortOrder,
+        parentDescription: editingSkill.parentDescription ?? "",
       });
     } else {
       reset({
@@ -80,6 +84,7 @@ export function SkillFormDialog({
         type: "positive",
         active: true,
         sortOrder: nextSortOrder,
+        parentDescription: "",
       });
     }
   }, [open, editingSkill, nextSortOrder, reset]);
@@ -88,7 +93,8 @@ export function SkillFormDialog({
     const payload = {
       ...data,
       emoji: data.emoji?.trim() || undefined,
-      points: data.type === "needs_work" && data.points > 0 ? -data.points : data.points,
+      parentDescription: data.parentDescription?.trim() || undefined,
+      points: data.type === "negative" && data.points > 0 ? -data.points : data.points,
     };
     if (editingSkill) {
       updateBehaviourSkill(editingSkill.id, payload);
@@ -102,7 +108,7 @@ export function SkillFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="overflow-visible">
         <DialogHeader>
           <DialogTitle>{editingSkill ? "Edit skill" : "New skill"}</DialogTitle>
           <DialogDescription>
@@ -116,9 +122,12 @@ export function SkillFormDialog({
               <Input id="skill-name" placeholder="e.g. Great participation" {...register("name")} />
               {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="skill-emoji">Emoji (optional)</Label>
-              <Input id="skill-emoji" placeholder="👏" maxLength={4} {...register("emoji")} />
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Emoji</Label>
+              <SkillEmojiPicker
+                value={emojiValue}
+                onChange={(emoji) => setValue("emoji", emoji, { shouldDirty: true })}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="skill-points">Points</Label>
@@ -135,14 +144,25 @@ export function SkillFormDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="positive">Positive (merit)</SelectItem>
-                  <SelectItem value="needs_work">Needs work (reminder)</SelectItem>
+                  <SelectItem value="positive">Positive</SelectItem>
+                  <SelectItem value="negative">Negative</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="skill-order">Sort order</Label>
               <Input id="skill-order" type="number" {...register("sortOrder", { valueAsNumber: true })} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="skill-parent-desc">
+                Parent-friendly label{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="skill-parent-desc"
+                placeholder="e.g. Participated actively in class discussion"
+                {...register("parentDescription")}
+              />
             </div>
           </div>
           <DialogFooter>

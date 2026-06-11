@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft,
   Users,
   GraduationCap,
   Clock,
@@ -26,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HintTooltip } from "@/components/ui/hint-tooltip";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -74,8 +74,12 @@ import type {
   StudentTaskRecord,
   StudentTaskStatus,
 } from "@/types";
-import { pointsByStudent } from "@/lib/pointsUtils";
+import { pointsByStudent, skillsForClassToolbar } from "@/lib/pointsUtils";
 import { resolveSeatGrid, studentsFromSeatGrid } from "@/lib/seatingUtils";
+import { getAttendanceAlerts } from "@/lib/attentionUtils";
+import { useClassKeyboardShortcuts } from "@/hooks/useClassKeyboardShortcuts";
+import { showUndoToast } from "@/lib/undoToast";
+import type { AttendanceReasonCode, BehaviourSkill } from "@/types";
 
 export function ClassDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -92,6 +96,10 @@ export function ClassDetailPage() {
   const pointEvents = useAppStore((s) => s.pointEvents);
   const addAttendance = useAppStore((s) => s.addAttendance);
   const updateAttendance = useAppStore((s) => s.updateAttendance);
+  const deleteAttendance = useAppStore((s) => s.deleteAttendance);
+  const behaviourSkills = useAppStore((s) => s.behaviourSkills);
+  const addPointEvent = useAppStore((s) => s.addPointEvent);
+  const deletePointEvent = useAppStore((s) => s.deletePointEvent);
   const updateStudentTaskRecord = useAppStore((s) => s.updateStudentTaskRecord);
   const deleteClassTask = useAppStore((s) => s.deleteClassTask);
   const archiveClassTask = useAppStore((s) => s.archiveClassTask);
@@ -114,6 +122,7 @@ export function ClassDetailPage() {
   const [quickTaskUpdates, setQuickTaskUpdates] = useState<
     Record<string, { recordId: string; status: StudentTaskStatus; score: string }>
   >({});
+  const [rosterSelectedId, setRosterSelectedId] = useState<string | null>(null);
 
   const todayStr = getLocalToday();
   const [attendanceDate, setAttendanceDate] = useState(() =>
@@ -229,28 +238,120 @@ export function ClassDetailPage() {
     (a, b) => DAY_ORDER.indexOf(a.dayOfWeek) - DAY_ORDER.indexOf(b.dayOfWeek)
   );
 
+  const toolbarSkills = useMemo(
+    () => (cls ? skillsForClassToolbar(behaviourSkills, cls) : []),
+    [behaviourSkills, cls]
+  );
+
+  const attendanceAlerts = useMemo(
+    () =>
+      cls
+        ? getAttendanceAlerts(classStudents, cls.id, attendance)
+        : [],
+    [cls, classStudents, attendance]
+  );
+
+  const awardSkillToStudent = useCallback(
+    (studentId: string, skill: BehaviourSkill) => {
+      const eventId = addPointEvent({
+        studentId,
+        skillId: skill.id,
+        classId: cls?.id ?? "",
+        date: attendanceDate,
+        points: skill.points,
+      });
+      const st = classStudents.find((s) => s.id === studentId);
+      const sign = skill.points > 0 ? "+" : "";
+      showUndoToast(
+        `${sign}${skill.points} ${skill.name} → ${st ? getStudentDisplayName(st) : "student"}`,
+        () => deletePointEvent(eventId)
+      );
+    },
+    [addPointEvent, deletePointEvent, cls?.id, attendanceDate, classStudents]
+  );
+
+  const awardSkillToStudents = useCallback(
+    (studentIds: string[], skill: BehaviourSkill) => {
+      if (studentIds.length === 0) return;
+      const eventIds = studentIds.map((studentId) =>
+        addPointEvent({
+          studentId,
+          skillId: skill.id,
+          classId: cls?.id ?? "",
+          date: attendanceDate,
+          points: skill.points,
+        })
+      );
+      const sign = skill.points > 0 ? "+" : "";
+      const soleStudent =
+        studentIds.length === 1
+          ? classStudents.find((s) => s.id === studentIds[0])
+          : undefined;
+      const label =
+        soleStudent != null
+          ? `${sign}${skill.points} ${skill.name} → ${getStudentDisplayName(soleStudent)}`
+          : `${sign}${skill.points} ${skill.name} → ${studentIds.length} students`;
+      showUndoToast(label, () => eventIds.forEach((id) => deletePointEvent(id)));
+    },
+    [addPointEvent, deletePointEvent, cls?.id, attendanceDate, classStudents]
+  );
+
+  const cycleNextStudent = useCallback(() => {
+    if (classStudents.length === 0) return;
+    const currentIdx = rosterSelectedId
+      ? classStudents.findIndex((s) => s.id === rosterSelectedId)
+      : -1;
+    const next = classStudents[(currentIdx + 1) % classStudents.length];
+    if (next) setRosterSelectedId(next.id);
+  }, [classStudents, rosterSelectedId]);
+
   const markAttendance = useCallback(
-    (studentId: string, status: AttendanceStatus) => {
+    (studentId: string, status: AttendanceStatus, reasonCode?: AttendanceReasonCode) => {
       const existing = dayAttendanceRows.find((a) => a.studentId === studentId);
+      const prevStatus = existing?.status ?? null;
+      const prevReason = existing?.reasonCode;
       if (existing) {
-        updateAttendance(existing.id, { status });
+        updateAttendance(existing.id, { status, reasonCode });
+        showUndoToast(`Attendance: ${status}`, () => {
+          if (prevStatus) {
+            updateAttendance(existing.id, { status: prevStatus, reasonCode: prevReason });
+          } else {
+            deleteAttendance(existing.id);
+          }
+        });
       } else {
-        addAttendance({
+        const newId = addAttendance({
           studentId,
           classId: cls?.id ?? "",
           date: attendanceDate,
           status,
+          reasonCode,
         });
+        showUndoToast(`Attendance: ${status}`, () => deleteAttendance(newId));
       }
     },
-    [dayAttendanceRows, updateAttendance, addAttendance, cls?.id, attendanceDate]
+    [dayAttendanceRows, updateAttendance, addAttendance, deleteAttendance, cls?.id, attendanceDate]
   );
+
+  useClassKeyboardShortcuts({
+    enabled: !!cls,
+    toolbarSkills,
+    selectedStudentId: rosterSelectedId,
+    onMarkPresent: (id) => markAttendance(id, "present"),
+    onAwardSkill: awardSkillToStudent,
+    onNextStudent: cycleNextStudent,
+  });
 
   const onTaskStatusChange = useCallback(
     (recordId: string, status: StudentTaskStatus) => {
+      const prev = studentTaskRecords.find((r) => r.id === recordId);
+      const prevStatus = prev?.status;
       updateStudentTaskRecord(recordId, { status });
+      showUndoToast(`Task: ${studentTaskStatusLabel[status]}`, () => {
+        if (prevStatus) updateStudentTaskRecord(recordId, { status: prevStatus });
+      });
     },
-    [updateStudentTaskRecord]
+    [updateStudentTaskRecord, studentTaskRecords]
   );
 
   const onTaskScoreBlur = useCallback(
@@ -374,13 +475,8 @@ export function ClassDetailPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-4">
-          <Link to="/classes">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
           <div>
-            <h2 className="text-2xl font-bold">{cls.name}</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-gradient">{cls.name}</h2>
             {(cls.classroomNumber || subject) && (
               <p className="text-sm text-muted-foreground">
                 {cls.classroomNumber && <span>Room {cls.classroomNumber}</span>}
@@ -401,64 +497,75 @@ export function ClassDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <GraduationCap className="h-4 w-4" /> Main teacher
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-semibold">
-              {mainTeacher ? getTeacherDisplayName(mainTeacher) : "Unassigned"}
-            </p>
-            {mainTeacher?.email && <p className="text-sm text-muted-foreground">{mainTeacher.email}</p>}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Users className="h-4 w-4" /> Students
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{classStudents.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Clock className="h-4 w-4" /> Schedule
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sortedSchedule.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No times set.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5 text-xs">
-                {sortedSchedule.map((entry) => (
-                  <span
-                    key={entry.id}
-                    className="rounded-md border border-border bg-muted/40 px-2 py-1"
-                  >
-                    {DAY_SHORT[entry.dayOfWeek]} {entry.startTime}–{entry.endTime}
-                  </span>
+      <Card>
+        <CardContent className="space-y-5 p-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <GraduationCap className="h-4 w-4" />
+                Main teacher
+              </p>
+              <p className="font-semibold">
+                {mainTeacher ? getTeacherDisplayName(mainTeacher) : "Unassigned"}
+              </p>
+              {mainTeacher?.email && (
+                <p className="text-sm text-muted-foreground">{mainTeacher.email}</p>
+              )}
+            </div>
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Users className="h-4 w-4" />
+                Students
+              </p>
+              <p className="text-2xl font-bold">{classStudents.length}</p>
+            </div>
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                Schedule
+              </p>
+              {sortedSchedule.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No times set.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 text-xs">
+                  {sortedSchedule.map((entry) => (
+                    <span
+                      key={entry.id}
+                      className="rounded-md border border-border bg-muted/40 px-2 py-1"
+                    >
+                      {DAY_SHORT[entry.dayOfWeek]} {entry.startTime}–{entry.endTime}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {coTeachers.length > 0 && (
+            <div>
+              <p className="mb-2 text-sm font-medium text-muted-foreground">Co-teachers</p>
+              <div className="flex flex-wrap gap-2">
+                {coTeachers.map((t) => (
+                  <Badge key={t.id} variant="outline">
+                    {getTeacherDisplayName(t)}
+                  </Badge>
                 ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </div>
+          )}
 
-      {coTeachers.length > 0 && (
-        <Card>
+        </CardContent>
+      </Card>
+
+      {attendanceAlerts.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Co-teachers</CardTitle>
+            <CardTitle className="text-sm">Attendance alerts</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {coTeachers.map((t) => (
-              <Badge key={t.id} variant="outline">
-                {getTeacherDisplayName(t)}
+            {attendanceAlerts.map((a) => (
+              <Badge key={`${a.studentId}-${a.message}`} variant="outline" className="text-xs">
+                {a.studentName}: {a.message}
               </Badge>
             ))}
           </CardContent>
@@ -468,19 +575,19 @@ export function ClassDetailPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Quick class check</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Random student picker for attendance and task updates.
-          </p>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => openRandomStudentPicker()}
-            disabled={classStudents.length === 0}
-            title="Random student attendance and task updates"
-          >
-            <Play className="mr-1.5 h-4 w-4" />
-            Random student check
-          </Button>
+          <HintTooltip content="Pick a random student for attendance and task updates.">
+            <span className="inline-flex">
+              <Button
+                onClick={() => openRandomStudentPicker()}
+                disabled={classStudents.length === 0}
+              >
+                <Play className="mr-1.5 h-4 w-4" />
+                Random student check
+              </Button>
+            </span>
+          </HintTooltip>
           <Button asChild type="button" variant="outline">
             <Link to={`/points?classId=${cls.id}`}>
               <Sparkles className="mr-1.5 h-4 w-4" />
@@ -493,34 +600,34 @@ export function ClassDetailPage() {
       <Card>
         <CardHeader className="flex flex-col gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              Students
-            </CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Seating plan for points and attendance. Drag cards to match your room layout.
-            </p>
+            <HintTooltip content="Seating plan for points and attendance. Drag cards to match your room layout.">
+              <CardTitle className="flex w-fit items-center gap-2 text-lg">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                Students
+              </CardTitle>
+            </HintTooltip>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2">
-              <label htmlFor="class-attendance-date" className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                Attendance date
-              </label>
-              <DatePicker
-                id="class-attendance-date"
-                value={attendanceDate}
-                onChange={setAttendanceDateWithUrl}
-                className="h-9 w-44"
-              />
-            </div>
+            <HintTooltip content="Attendance date for this session.">
+              <div className="w-fit">
+                <DatePicker
+                  id="class-attendance-date"
+                  value={attendanceDate}
+                  onChange={setAttendanceDateWithUrl}
+                  className="h-9 w-44"
+                />
+              </div>
+            </HintTooltip>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline">
-                  <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                  More
-                  <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
+              <HintTooltip content="Add or import students, or open full attendance and points pages.">
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                    More
+                    <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </HintTooltip>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
                   <Link to={`/attendance?classId=${cls.id}`}>
@@ -551,21 +658,23 @@ export function ClassDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3 overflow-visible">
-          <p className="text-xs text-muted-foreground">
-            Drag the grip on a seat card to rearrange. Tap the card for attendance, tasks, grades, and points.
-          </p>
           <StudentRosterTable
             cls={cls}
             sessionDate={attendanceDate}
+            todayStr={todayStr}
             students={classStudents}
             activeTasks={activeTasksForClass}
             studentTaskRecords={studentTaskRecords}
             dayAttendanceRows={dayAttendanceRows}
             pointsTodayByStudent={pointsTodayByStudent}
+            selectedStudentId={rosterSelectedId}
+            onSelectedStudentChange={setRosterSelectedId}
             onMarkAttendance={markAttendance}
             onTaskStatusChange={onTaskStatusChange}
             onTaskScoreBlur={onTaskScoreBlur}
             onOpenProgress={openProgress}
+            onAwardSkill={awardSkillToStudent}
+            onAwardSkillBulk={awardSkillToStudents}
             archivedTaskCount={archivedTasksForClass.length}
           />
         </CardContent>

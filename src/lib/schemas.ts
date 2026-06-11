@@ -36,6 +36,7 @@ export const studentSchema = z
     parentName: z.string().optional(),
     parentPhone: z.string().optional(),
     notes: z.string().optional(),
+    photoUrl: z.string().url("Invalid URL").or(z.literal("")).optional(),
   })
   .superRefine((data, ctx) => {
     const hasEnglish = `${data.firstName} ${data.lastName}`.trim().length > 0;
@@ -85,9 +86,10 @@ export const behaviourSkillSchema = z.object({
   name: z.string().min(1, "Name is required"),
   emoji: z.string().optional(),
   points: z.number().int().refine((n) => n !== 0, "Points cannot be zero"),
-  type: z.enum(["positive", "needs_work"]),
+  type: z.enum(["positive", "negative"]),
   active: z.boolean(),
   sortOrder: z.number().int().min(0),
+  parentDescription: z.string().optional(),
 });
 export type BehaviourSkillFormData = z.infer<typeof behaviourSkillSchema>;
 
@@ -102,12 +104,19 @@ const classTaskTypes = [
   "other",
 ] as const;
 
+const rubricCriterionSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1),
+  maxPoints: z.number().optional(),
+});
+
 export const classTaskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   type: z.enum(classTaskTypes),
   description: z.string().optional(),
   deadline: z.string().min(1, "Deadline is required"),
   maxScore: z.string().optional(),
+  rubric: z.array(rubricCriterionSchema).optional(),
 });
 export type ClassTaskFormData = z.infer<typeof classTaskSchema>;
 

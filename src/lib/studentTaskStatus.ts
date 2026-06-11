@@ -54,6 +54,3 @@ export function studentTaskStatusBadgeClass(status: StudentTaskStatus): string {
   return map[status];
 }
 
-export function isStatusCompleted(status: StudentTaskStatus): boolean {
-  return status === "completed";
-}

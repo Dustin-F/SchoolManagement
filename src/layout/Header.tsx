@@ -5,12 +5,14 @@ import {
   CheckCircle2,
   Circle,
   Database,
+  Download,
   Loader2,
   LogOut,
   Menu,
   Moon,
   Settings,
   Sun,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,13 +36,19 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import {
   getLastSyncError,
+  getPendingSyncCount,
   getSyncStatus,
   getTableSyncHealth,
+  subscribePendingSync,
   subscribeSyncError,
   subscribeSyncStatus,
   subscribeTableSyncHealth,
   type TableSyncHealth,
 } from "@/lib/storage";
+import { exportAppDataBackup, parseAppDataBackup } from "@/lib/backupUtils";
+import { storage } from "@/lib/storage";
+import type { AppData } from "@/types";
+import { AppBreadcrumb, useBreadcrumbCrumbs } from "@/components/AppBreadcrumb";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store";
 
@@ -55,6 +63,7 @@ const pageTitles: Record<string, string> = {
   "/attendance": "Attendance",
   "/points": "Points",
   "/behaviour": "Points",
+  "/missing-work": "Missing work",
 };
 
 interface HeaderProps {
@@ -69,16 +78,20 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [tableHealth, setTableHealth] = useState(getTableSyncHealth);
   const [demoDialogOpen, setDemoDialogOpen] = useState(false);
   const resetToSeed = useAppStore((s) => s.resetToSeed);
+  const hydrateFromCloud = useAppStore((s) => s.hydrateFromCloud);
+  const [pendingCount, setPendingCount] = useState(getPendingSyncCount());
 
   useEffect(() => {
     setDarkMode(document.documentElement.classList.contains("dark"));
     const unsubStatus = subscribeSyncStatus(setSyncStatus);
     const unsubError = subscribeSyncError(setSyncError);
     const unsubHealth = subscribeTableSyncHealth(setTableHealth);
+    const unsubPending = subscribePendingSync(setPendingCount);
     return () => {
       unsubStatus();
       unsubError();
       unsubHealth();
+      unsubPending();
     };
   }, []);
 
@@ -116,6 +129,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   // Match exact path or the first segment for nested routes
   const basePath = "/" + (location.pathname.split("/")[1] || "");
   const title = pageTitles[basePath] || "SchoolHub";
+  const breadcrumbCrumbs = useBreadcrumbCrumbs();
 
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
@@ -132,6 +146,44 @@ export function Header({ onMenuClick }: HeaderProps) {
     toast.success("Demo data loaded. Syncing to cloud…");
   };
 
+  const handleExportBackup = () => {
+    const s = useAppStore.getState();
+    exportAppDataBackup({
+      teachers: s.teachers,
+      students: s.students,
+      classes: s.classes,
+      subjects: s.subjects,
+      attendance: s.attendance,
+      behaviourSkills: s.behaviourSkills,
+      pointEvents: s.pointEvents,
+      classTasks: s.classTasks,
+      studentTaskRecords: s.studentTaskRecords,
+    });
+    toast.success("Backup downloaded.");
+  };
+
+  const handleImportBackup = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = parseAppDataBackup(text);
+        hydrateFromCloud(data);
+        (Object.keys(data) as (keyof AppData)[]).forEach((key) => {
+          storage.set(key, data[key]);
+        });
+        toast.success("Backup imported. Syncing to cloud…");
+      } catch {
+        toast.error("Could not read backup file.");
+      }
+    };
+    input.click();
+  };
+
   const handleToggleTheme = () => {
     const next = !darkMode;
     document.documentElement.classList.toggle("dark", next);
@@ -140,7 +192,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/95 px-6 backdrop-blur supports-backdrop-filter:bg-background/60">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-primary/20 bg-white/75 px-6 shadow-sm backdrop-blur-xl supports-backdrop-filter:bg-white/60 dark:border-primary/15 dark:bg-background/75 dark:supports-backdrop-filter:bg-background/60">
       <div className="flex items-center">
         <Button
           type="button"
@@ -152,10 +204,19 @@ export function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        {breadcrumbCrumbs ? (
+          <AppBreadcrumb crumbs={breadcrumbCrumbs} />
+        ) : (
+          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
+        {pendingCount > 0 && (
+          <span className="mr-1 hidden text-xs font-medium text-amber-600 dark:text-amber-400 sm:inline">
+            {pendingCount} pending
+          </span>
+        )}
         {syncLabel ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -236,6 +297,14 @@ export function Header({ onMenuClick }: HeaderProps) {
             <DropdownMenuItem onClick={() => setDemoDialogOpen(true)}>
               <Database className="mr-2 h-4 w-4" />
               Load demo data
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportBackup}>
+              <Download className="mr-2 h-4 w-4" />
+              Export school backup
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleImportBackup}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import school backup
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut}>

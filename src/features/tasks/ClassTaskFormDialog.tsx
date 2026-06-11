@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { nanoid } from "nanoid";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -24,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { classTaskSchema, type ClassTaskFormData } from "@/lib/schemas";
-import type { ClassTask, ClassTaskType } from "@/types";
+import type { ClassTask, ClassTaskType, RubricCriterion } from "@/types";
 
 const taskTypes: ClassTaskType[] = [
   "exam",
@@ -52,6 +53,7 @@ export function ClassTaskFormDialog({
 }: ClassTaskFormDialogProps) {
   const addClassTask = useAppStore((s) => s.addClassTask);
   const updateClassTask = useAppStore((s) => s.updateClassTask);
+  const [rubric, setRubric] = useState<RubricCriterion[]>([]);
 
   const {
     register,
@@ -75,6 +77,7 @@ export function ClassTaskFormDialog({
 
   useEffect(() => {
     if (editingTask) {
+      setRubric(editingTask.rubric ?? []);
       reset({
         title: editingTask.title,
         type: editingTask.type,
@@ -88,6 +91,7 @@ export function ClassTaskFormDialog({
             : "",
       });
     } else {
+      setRubric([]);
       reset({
         title: "",
         type: "homework",
@@ -109,6 +113,7 @@ export function ClassTaskFormDialog({
       description: data.description || undefined,
       deadline: data.deadline,
       maxScore,
+      rubric: rubric.length > 0 ? rubric : undefined,
     };
     if (editingTask) {
       updateClassTask(editingTask.id, payload);
@@ -170,6 +175,57 @@ export function ClassTaskFormDialog({
           <div className="space-y-2">
             <Label htmlFor="description">Description / info <span className="text-muted-foreground font-normal">(optional)</span></Label>
             <Textarea id="description" rows={3} placeholder="Instructions or details..." {...register("description")} />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Rubric criteria <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() =>
+                  setRubric((prev) => [...prev, { id: nanoid(), label: "Criterion", maxPoints: 10 }])
+                }
+              >
+                Add criterion
+              </Button>
+            </div>
+            {rubric.map((c, i) => (
+              <div key={c.id} className="flex gap-2">
+                <Input
+                  value={c.label}
+                  onChange={(e) =>
+                    setRubric((prev) =>
+                      prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x))
+                    )
+                  }
+                  placeholder="Criterion label"
+                />
+                <Input
+                  type="number"
+                  className="w-20"
+                  value={c.maxPoints ?? ""}
+                  onChange={(e) =>
+                    setRubric((prev) =>
+                      prev.map((x, j) =>
+                        j === i ? { ...x, maxPoints: Number(e.target.value) || undefined } : x
+                      )
+                    )
+                  }
+                  placeholder="Max"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setRubric((prev) => prev.filter((_, j) => j !== i))}
+                >
+                  ×
+                </Button>
+              </div>
+            ))}
           </div>
 
           <DialogFooter>

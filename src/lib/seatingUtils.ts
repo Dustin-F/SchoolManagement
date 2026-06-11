@@ -37,10 +37,6 @@ export function getSeatRows(cls: SchoolClass, studentCount: number): number {
   return minRows;
 }
 
-export function seatGridSize(cls: SchoolClass, studentCount: number): number {
-  return getSeatColumns(cls) * getSeatRows(cls, studentCount);
-}
-
 export function studentIdsFromSeatGrid(grid: (string | null)[]): string[] {
   return grid.filter((id): id is string => id != null);
 }
@@ -51,10 +47,6 @@ export function orderStudentIdsByGrid(enrolledIds: string[], grid: (string | nul
   const placedSet = new Set(placed);
   const unplaced = enrolledIds.filter((id) => !placedSet.has(id));
   return [...placed, ...unplaced];
-}
-
-export function indexToRowCol(index: number, columns: number): { row: number; col: number } {
-  return { row: Math.floor(index / columns), col: index % columns };
 }
 
 /**

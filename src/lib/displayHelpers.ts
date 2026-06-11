@@ -4,7 +4,7 @@ function compact(value?: string): string {
   return (value ?? "").trim();
 }
 
-export function getStudentEnglishName(student: Student): string {
+function getStudentEnglishName(student: Student): string {
   return `${compact(student.firstName)} ${compact(student.lastName)}`.trim();
 }
 

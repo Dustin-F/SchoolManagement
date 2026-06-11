@@ -68,6 +68,7 @@ export function StudentFormDialog({
       parentName: "",
       parentPhone: "",
       notes: "",
+      photoUrl: "",
     },
   });
 
@@ -83,6 +84,7 @@ export function StudentFormDialog({
         parentName: editingStudent.parentName ?? "",
         parentPhone: editingStudent.parentPhone ?? "",
         notes: editingStudent.notes ?? "",
+        photoUrl: editingStudent.photoUrl ?? "",
       });
       const enrolled = classes.filter((c) => c.studentIds.includes(editingStudent.id)).map((c) => c.id);
       setSelectedClassIds(enrolled);
@@ -97,6 +99,7 @@ export function StudentFormDialog({
         parentName: "",
         parentPhone: "",
         notes: "",
+        photoUrl: "",
       });
       setSelectedClassIds([...defaultClassIds]);
     }
@@ -119,14 +122,18 @@ export function StudentFormDialog({
       );
       return;
     }
+    const payload = {
+      ...data,
+      photoUrl: data.photoUrl?.trim() || undefined,
+    };
     if (editingStudent) {
-      updateStudent(editingStudent.id, data);
+      updateStudent(editingStudent.id, payload);
       setStudentEnrollment(editingStudent.id, selectedClassIds);
       const updatedName =
         `${data.firstName} ${data.lastName}`.trim() || data.chineseName || data.pinyinName || "Student";
       toast.success(`${updatedName} updated.`);
     } else {
-      const newId = addStudent(data);
+      const newId = addStudent(payload);
       setStudentEnrollment(newId, enrollment);
       const createdName =
         `${data.firstName} ${data.lastName}`.trim() || data.chineseName || data.pinyinName || "Student";
@@ -224,6 +231,14 @@ export function StudentFormDialog({
               <Label htmlFor="parentPhone">Parent Phone</Label>
               <Input id="parentPhone" placeholder="555-0100" {...register("parentPhone")} />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="photoUrl">
+              Photo URL <span className="text-muted-foreground font-normal">(optional, with consent)</span>
+            </Label>
+            <Input id="photoUrl" placeholder="https://…" {...register("photoUrl")} />
+            {errors.photoUrl && <p className="text-xs text-destructive">{errors.photoUrl.message}</p>}
           </div>
 
           <div className="space-y-2">

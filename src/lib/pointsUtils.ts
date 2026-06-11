@@ -1,5 +1,5 @@
 import type { BehaviourSkill, PointEvent, SchoolClass, Student } from "@/types";
-import { getLocalToday, toLocalDateString } from "@/lib/utils";
+import { getLocalToday } from "@/lib/utils";
 
 export function getWeekStart(date = new Date()): Date {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -152,6 +152,3 @@ export function shiftWeek(weekStart: Date, deltaWeeks: number): Date {
   return d;
 }
 
-export function weekStartIso(weekStart: Date): string {
-  return toLocalDateString(weekStart);
-}

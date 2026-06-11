@@ -10,12 +10,14 @@ import { TeachersPage } from "@/pages/TeachersPage";
 import { SubjectsPage } from "@/pages/SubjectsPage";
 import { AttendancePage } from "@/pages/AttendancePage";
 import { PointsPage } from "@/pages/PointsPage";
+import { MissingWorkPage } from "@/pages/MissingWorkPage";
 import { Navigate } from "react-router-dom";
 import { StudentDetailPage } from "@/pages/StudentDetailPage";
 import { AuthPage } from "@/pages/AuthPage";
 import { supabase } from "@/lib/supabase";
 import { clearCloudUser, initializeCloudForUser } from "@/lib/storage";
 import { useAppStore } from "@/store";
+import { SpinnerCustom } from "@/components/ui/spinner";
 
 const THEME_STORAGE_KEY = "schoolhub-theme";
 
@@ -75,9 +77,7 @@ export default function App() {
 
   if (!authReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
-        Loading...
-      </div>
+      <SpinnerCustom />
     );
   }
 
@@ -104,6 +104,7 @@ export default function App() {
           <Route path="subjects" element={<SubjectsPage />} />
           <Route path="attendance" element={<AttendancePage />} />
           <Route path="points" element={<PointsPage />} />
+          <Route path="missing-work" element={<MissingWorkPage />} />
           <Route path="behaviour" element={<Navigate to="/points" replace />} />
         </Route>
       </Routes>

@@ -9,6 +9,7 @@ import type { BehaviourSkill, SchoolClass, Student } from "@/types";
 import { getStudentDisplayName } from "@/lib/displayHelpers";
 import { skillButtonClass, skillsForClassToolbar, sumPoints } from "@/lib/pointsUtils";
 import { cn } from "@/lib/utils";
+import { HintTooltip } from "@/components/ui/hint-tooltip";
 
 interface ClassPointsToolbarProps {
   cls: SchoolClass;
@@ -80,41 +81,39 @@ export function ClassPointsToolbar({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-sm font-medium">
-            <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" />
-            {embedded ? "Award points" : "Points"}
-          </p>
-          {!embedded && (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {selectedStudent ? (
-                <>
-                  Awarding to{" "}
-                  <span className="font-semibold text-foreground">
-                    {getStudentDisplayName(selectedStudent)}
-                  </span>
-                </>
-              ) : (
-                "Tap a student row below, then tap a skill."
-              )}
-              <span className="mx-1.5 text-border">·</span>
-              Class today:{" "}
-              <span className="font-semibold text-foreground tabular-nums">{classTodayTotal}</span>
+        <HintTooltip
+          content={
+            selectedStudent
+              ? `Awarding to ${getStudentDisplayName(selectedStudent)}. Tap a skill or press 1–4.`
+              : "Select a student, then tap a skill or press 1–4."
+          }
+        >
+          <div className="min-w-0 w-fit">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" />
+              {embedded ? "Award points" : "Points"}
+              {!embedded ? (
+                <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                  · {classTodayTotal} today
+                </span>
+              ) : null}
             </p>
-          )}
-        </div>
-        <Button asChild type="button" variant="outline" size="sm" className="shrink-0">
-          <Link to="/points?tab=skills">
-            <Settings2 className="mr-1.5 h-4 w-4" />
-            Manage skills
-          </Link>
-        </Button>
+          </div>
+        </HintTooltip>
+        <HintTooltip content="Create and edit school-wide behaviour skills.">
+          <Button asChild type="button" variant="outline" size="sm" className="shrink-0">
+            <Link to={`/points?tab=skills&classId=${cls.id}`}>
+              <Settings2 className="mr-1.5 h-4 w-4" />
+              Manage skills
+            </Link>
+          </Button>
+        </HintTooltip>
       </div>
 
       {toolbarSkills.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No active skills yet.{" "}
-          <Link to="/points?tab=skills" className="text-primary hover:underline">
+          <Link to={`/points?tab=skills&classId=${cls.id}`} className="text-primary hover:underline">
             Create school-wide skills
           </Link>
         </p>

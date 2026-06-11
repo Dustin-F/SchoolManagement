@@ -301,7 +301,8 @@ export function PointsPage() {
                   <div>
                     <p className="font-medium">{skill.name}</p>
                     <p className="text-xs opacity-80">
-                      {skill.points > 0 ? `+${skill.points}` : skill.points} · {skill.type === "positive" ? "Merit" : "Reminder"}
+                      {skill.points > 0 ? `+${skill.points}` : skill.points} ·{" "}
+                      {skill.type === "positive" ? "Positive" : "Negative"}
                       {!skill.active && " · Archived"}
                     </p>
                   </div>

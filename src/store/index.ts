@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import { connectCloudPersistence, migrateStudentTaskRecordsCompletedField, storage } from "@/lib/storage";
+import { connectCloudPersistence, storage } from "@/lib/storage";
 import type {
   Teacher,
   Student,
@@ -32,6 +32,13 @@ import {
 } from "@/lib/classTaskSync";
 import { orderStudentIdsByGrid } from "@/lib/seatingUtils";
 
+/** Legacy skills used `needs_work` before it was renamed to `negative`. */
+function normalizeBehaviourSkills(skills: BehaviourSkill[]): BehaviourSkill[] {
+  return skills.map((s) =>
+    (s.type as string) === "needs_work" ? { ...s, type: "negative" } : s
+  );
+}
+
 function loadOrSeed<T>(key: string, seed: T[]): T[] {
   const stored = storage.get<T[]>(key);
   if (stored !== null) return stored;
@@ -42,8 +49,6 @@ function loadOrSeed<T>(key: string, seed: T[]): T[] {
 function timestamp() {
   return new Date().toISOString();
 }
-
-migrateStudentTaskRecordsCompletedField();
 
 interface AppStore {
   teachers: Teacher[];
@@ -72,8 +77,9 @@ interface AppStore {
   updateSubject: (id: string, data: Partial<Subject>) => void;
   deleteSubject: (id: string) => void;
 
-  addAttendance: (data: Omit<AttendanceRecord, "id" | "createdAt" | "updatedAt">) => void;
+  addAttendance: (data: Omit<AttendanceRecord, "id" | "createdAt" | "updatedAt">) => string;
   updateAttendance: (id: string, data: Partial<AttendanceRecord>) => void;
+  deleteAttendance: (id: string) => void;
 
   addBehaviourSkill: (data: Omit<BehaviourSkill, "id" | "createdAt" | "updatedAt">) => void;
   updateBehaviourSkill: (id: string, data: Partial<BehaviourSkill>) => void;
@@ -157,7 +163,9 @@ export const useAppStore = create<AppStore>((set) => {
     classes: loadOrSeed("classes", seedClasses),
     subjects: loadOrSeed("subjects", seedSubjects),
     attendance: loadOrSeed("attendance", seedAttendance),
-    behaviourSkills: loadOrSeed("behaviourSkills", seedBehaviourSkills),
+    behaviourSkills: normalizeBehaviourSkills(
+      loadOrSeed("behaviourSkills", seedBehaviourSkills)
+    ),
     pointEvents: loadOrSeed("pointEvents", seedPointEvents),
     classTasks: loadOrSeed("classTasks", seedClassTasks),
     studentTaskRecords: loadOrSeed("studentTaskRecords", seedStudentTaskRecords),
@@ -281,8 +289,19 @@ export const useAppStore = create<AppStore>((set) => {
       });
     },
 
-    addAttendance: attendanceCrud.add,
+    addAttendance: (data) => {
+      const id = nanoid();
+      const now = timestamp();
+      const item: AttendanceRecord = { ...data, id, createdAt: now, updatedAt: now };
+      set((state) => {
+        const attendance = [...state.attendance, item];
+        storage.set("attendance", attendance);
+        return { attendance };
+      });
+      return id;
+    },
     updateAttendance: attendanceCrud.update,
+    deleteAttendance: attendanceCrud.delete,
 
     addBehaviourSkill: behaviourSkillCrud.add,
     updateBehaviourSkill: behaviourSkillCrud.update,
@@ -457,7 +476,9 @@ export const useAppStore = create<AppStore>((set) => {
           classes: payload.classes ?? state.classes,
           subjects: payload.subjects ?? state.subjects,
           attendance: payload.attendance ?? state.attendance,
-          behaviourSkills: payload.behaviourSkills ?? state.behaviourSkills,
+          behaviourSkills: normalizeBehaviourSkills(
+            payload.behaviourSkills ?? state.behaviourSkills
+          ),
           pointEvents: payload.pointEvents ?? state.pointEvents,
           classTasks: payload.classTasks ?? state.classTasks,
           studentTaskRecords: payload.studentTaskRecords ?? state.studentTaskRecords,

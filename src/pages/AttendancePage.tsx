@@ -25,7 +25,13 @@ import {
 } from "@/components/ui/table";
 import { useAppStore } from "@/store";
 import { usePagination } from "@/hooks/usePagination";
-import type { AttendanceStatus } from "@/types";
+import type { AttendanceReasonCode, AttendanceStatus } from "@/types";
+import {
+  ATTENDANCE_REASON_CODES,
+  attendanceStatusShowsReason,
+} from "@/lib/attendanceConstants";
+import { showUndoToast } from "@/lib/undoToast";
+import { getAttendanceAlerts } from "@/lib/attentionUtils";
 import { formatDate } from "@/lib/utils";
 import { getStudentDisplayName, getStudentName } from "@/lib/displayHelpers";
 
@@ -44,6 +50,7 @@ export function AttendancePage() {
   const attendance = useAppStore((s) => s.attendance);
   const addAttendance = useAppStore((s) => s.addAttendance);
   const updateAttendance = useAppStore((s) => s.updateAttendance);
+  const deleteAttendance = useAppStore((s) => s.deleteAttendance);
   const [searchParams] = useSearchParams();
   const classIdFromUrl = searchParams.get("classId");
 
@@ -75,19 +82,39 @@ export function AttendancePage() {
     return record ? record.status : null;
   };
 
-  const handleMark = (studentId: string, status: AttendanceStatus) => {
+  const handleMark = (
+    studentId: string,
+    status: AttendanceStatus,
+    reasonCode?: AttendanceReasonCode
+  ) => {
     const existing = dayAttendance.find((a) => a.studentId === studentId);
+    const prevStatus = existing?.status ?? null;
+    const prevReason = existing?.reasonCode;
     if (existing) {
-      updateAttendance(existing.id, { status });
+      updateAttendance(existing.id, { status, reasonCode });
+      showUndoToast(`Attendance: ${status}`, () => {
+        if (prevStatus) updateAttendance(existing.id, { status: prevStatus, reasonCode: prevReason });
+        else deleteAttendance(existing.id);
+      });
     } else {
-      addAttendance({
+      const newId = addAttendance({
         studentId,
         classId: selectedClassId,
         date: selectedDate,
         status,
+        reasonCode,
       });
+      showUndoToast(`Attendance: ${status}`, () => deleteAttendance(newId));
     }
   };
+
+  const attendanceAlerts = useMemo(
+    () =>
+      selectedClass
+        ? getAttendanceAlerts(classStudents, selectedClass.id, attendance)
+        : [],
+    [selectedClass, classStudents, attendance]
+  );
 
   const handleMarkAllPresent = () => {
     classStudents.forEach((s) => {
@@ -162,6 +189,18 @@ export function AttendancePage() {
         </div>
       </div>
 
+      {attendanceAlerts.length > 0 && (
+        <Card className="mb-4 border-amber-500/30 bg-amber-500/5">
+          <CardContent className="flex flex-wrap gap-2 py-3">
+            {attendanceAlerts.map((a) => (
+              <Badge key={`${a.studentId}-${a.message}`} variant="outline" className="text-xs">
+                {a.studentName}: {a.message}
+              </Badge>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {!selectedClassId ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <ClipboardList className="mb-4 h-12 w-12" />
@@ -185,22 +224,25 @@ export function AttendancePage() {
               <div className="space-y-2">
                 {classStudents.map((student) => {
                   const current = getStudentStatus(student.id);
+                  const record = dayAttendance.find((a) => a.studentId === student.id);
+                  const showReason = current ? attendanceStatusShowsReason(current) : false;
                   return (
                     <div
                       key={student.id}
-                      className="flex items-center justify-between rounded-lg border border-border p-3"
+                      className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <span className="font-medium">
                         {getStudentDisplayName(student)}
                       </span>
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {statuses.map((status) => {
                           const cfg = statusConfig[status];
                           const isActive = current === status;
                           return (
                             <button
                               key={status}
-                              onClick={() => handleMark(student.id, status)}
+                              type="button"
+                              onClick={() => handleMark(student.id, status, record?.reasonCode)}
                               className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
                                 isActive
                                   ? cfg.color + " ring-2 ring-offset-1 ring-current"
@@ -212,6 +254,25 @@ export function AttendancePage() {
                             </button>
                           );
                         })}
+                        {showReason && (
+                          <Select
+                            value={record?.reasonCode ?? ""}
+                            onValueChange={(v) =>
+                              handleMark(student.id, current!, v as AttendanceReasonCode)
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-36 text-xs">
+                              <SelectValue placeholder="Reason" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ATTENDANCE_REASON_CODES.map((r) => (
+                                <SelectItem key={r.value} value={r.value}>
+                                  {r.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     </div>
                   );
