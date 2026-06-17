@@ -8,6 +8,7 @@ import {
   Sparkles,
   School,
   FileWarning,
+  Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,8 @@ const navItems = [
   { to: "/teachers", label: "Teachers", icon: GraduationCap },
   { to: "/subjects", label: "Subjects", icon: BookOpen },
   { to: "/attendance", label: "Attendance", icon: ClipboardList },
-  { to: "/missing-work", label: "Missing work", icon: FileWarning },
+  { to: "/missing-work", label: "Incomplete & to-do", icon: FileWarning },
+  { to: "/settings/assessment", label: "Assessment", icon: Scale },
   { to: "/points", label: "Points", icon: Sparkles },
 ];
 

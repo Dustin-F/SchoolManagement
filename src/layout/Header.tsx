@@ -44,6 +44,7 @@ import {
   subscribeSyncStatus,
   subscribeTableSyncHealth,
   type TableSyncHealth,
+  flushCloudPersist,
 } from "@/lib/storage";
 import { exportAppDataBackup, parseAppDataBackup } from "@/lib/backupUtils";
 import { storage } from "@/lib/storage";
@@ -63,7 +64,7 @@ const pageTitles: Record<string, string> = {
   "/attendance": "Attendance",
   "/points": "Points",
   "/behaviour": "Points",
-  "/missing-work": "Missing work",
+  "/missing-work": "Incomplete & to-do",
 };
 
 interface HeaderProps {
@@ -140,10 +141,15 @@ export function Header({ onMenuClick }: HeaderProps) {
     toast.success("Signed out.");
   };
 
-  const handleLoadDemoData = () => {
+  const handleLoadDemoData = async () => {
     resetToSeed();
     setDemoDialogOpen(false);
-    toast.success("Demo data loaded. Syncing to cloud…");
+    try {
+      await flushCloudPersist();
+      toast.success("Demo data loaded.");
+    } catch {
+      toast.success("Demo data loaded locally. Cloud sync will retry shortly.");
+    }
   };
 
   const handleExportBackup = () => {
@@ -158,6 +164,12 @@ export function Header({ onMenuClick }: HeaderProps) {
       pointEvents: s.pointEvents,
       classTasks: s.classTasks,
       studentTaskRecords: s.studentTaskRecords,
+      classSessionNotes: s.classSessionNotes,
+      classScheduleEvents: s.classScheduleEvents,
+      classSessionExceptions: s.classSessionExceptions,
+      academicTerms: s.academicTerms,
+      taskAssessmentCategories: s.taskAssessmentCategories,
+      termGrades: s.termGrades,
     });
     toast.success("Backup downloaded.");
   };
@@ -192,8 +204,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-primary/20 bg-white/75 px-6 shadow-sm backdrop-blur-xl supports-backdrop-filter:bg-white/60 dark:border-primary/15 dark:bg-background/75 dark:supports-backdrop-filter:bg-background/60">
-      <div className="flex items-center">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-2 border-b border-primary/20 bg-white/75 px-4 shadow-sm backdrop-blur-xl supports-backdrop-filter:bg-white/60 sm:px-6 dark:border-primary/15 dark:bg-background/75 dark:supports-backdrop-filter:bg-background/60">
+      <div className="flex min-w-0 flex-1 items-center">
         <Button
           type="button"
           variant="ghost"
@@ -207,11 +219,11 @@ export function Header({ onMenuClick }: HeaderProps) {
         {breadcrumbCrumbs ? (
           <AppBreadcrumb crumbs={breadcrumbCrumbs} />
         ) : (
-          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+          <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">{title}</h1>
         )}
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
         {pendingCount > 0 && (
           <span className="mr-1 hidden text-xs font-medium text-amber-600 dark:text-amber-400 sm:inline">
             {pendingCount} pending
@@ -224,10 +236,31 @@ export function Header({ onMenuClick }: HeaderProps) {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className={cn("inline-flex h-8 px-2 mr-1 max-w-[200px] sm:max-w-[240px]", syncLabelClass)}
+                className={cn(
+                  "inline-flex h-8 max-w-[4.5rem] px-2 sm:mr-1 sm:max-w-[240px]",
+                  syncLabelClass
+                )}
                 aria-label="Cloud sync status — click for details"
               >
-                {syncLabel}
+                <span className="hidden truncate sm:inline">{syncLabel}</span>
+                <Loader2
+                  className={cn(
+                    "h-4 w-4 shrink-0 sm:hidden",
+                    syncStatus !== "syncing" && "hidden"
+                  )}
+                />
+                <CheckCircle2
+                  className={cn(
+                    "h-4 w-4 shrink-0 sm:hidden",
+                    syncStatus !== "synced" && "hidden"
+                  )}
+                />
+                <AlertCircle
+                  className={cn(
+                    "h-4 w-4 shrink-0 sm:hidden",
+                    syncStatus !== "error" && "hidden"
+                  )}
+                />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
@@ -269,7 +302,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <>
                   <DropdownMenuSeparator />
                   <p className="px-2 pb-2 text-xs text-muted-foreground">
-                    Fix the failed items in Supabase (see SUPABASE_SETUP.md), then refresh the
+                    Some data could not sync to the cloud. Check your connection and settings, then refresh the
                     page.
                   </p>
                 </>

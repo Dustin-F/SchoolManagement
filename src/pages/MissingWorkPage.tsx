@@ -1,9 +1,7 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { AlertCircle } from "lucide-react";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -12,123 +10,111 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAppStore } from "@/store";
-import { getStudentDisplayName } from "@/lib/displayHelpers";
+import { useIncompleteTodoData } from "@/hooks/useIncompleteTodoData";
+import {
+  ATTENTION_FILTER_OPTIONS,
+  expandIncompleteTodoRows,
+  filterIncompleteTodoRows,
+  type AttentionReason,
+} from "@/lib/attentionUtils";
+import {
+  IncompleteTodoRowCard,
+  IncompleteTodoSummaryChips,
+} from "@/features/incomplete/IncompleteTodoParts";
 import { getLocalToday } from "@/lib/utils";
-import { isTaskOverdue } from "@/lib/taskUtils";
-import { studentTaskStatusLabel } from "@/lib/studentTaskStatus";
 
 export function MissingWorkPage() {
-  const classes = useAppStore((s) => s.classes);
-  const students = useAppStore((s) => s.students);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const classFilter = searchParams.get("class") ?? "all";
+  const reasonFilter = (searchParams.get("type") ?? "all") as AttentionReason | "all";
+
+  const { items, summary, hasLessonsToday, activeClassList } = useIncompleteTodoData();
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
-  const [classFilter, setClassFilter] = useState<string>("all");
   const todayStr = getLocalToday();
 
-  const items = useMemo(() => {
-    const result: {
-      studentId: string;
-      studentName: string;
-      classId: string;
-      className: string;
-      taskId: string;
-      taskTitle: string;
-      status: string;
-      overdue: boolean;
-    }[] = [];
+  const rows = useMemo(() => {
+    const expanded = expandIncompleteTodoRows(items, classTasks, studentTaskRecords, todayStr);
+    return filterIncompleteTodoRows(expanded, {
+      classId: classFilter,
+      reason: reasonFilter,
+    });
+  }, [items, classTasks, studentTaskRecords, todayStr, classFilter, reasonFilter]);
 
-    for (const task of classTasks) {
-      if (task.archived) continue;
-      const cls = classes.find((c) => c.id === task.classId);
-      if (!cls) continue;
-      if (classFilter !== "all" && task.classId !== classFilter) continue;
+  const setClassFilter = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === "all") next.delete("class");
+    else next.set("class", value);
+    setSearchParams(next, { replace: true });
+  };
 
-      for (const studentId of cls.studentIds) {
-        const rec = studentTaskRecords.find(
-          (r) => r.taskId === task.id && r.studentId === studentId
-        );
-        if (!rec) continue;
-        if (rec.status === "completed") continue;
-        const overdue = isTaskOverdue(task, todayStr);
-        if (rec.status === "missing" || overdue) {
-          const student = students.find((s) => s.id === studentId);
-          result.push({
-            studentId,
-            studentName: student ? getStudentDisplayName(student) : "Student",
-            classId: cls.id,
-            className: cls.name,
-            taskId: task.id,
-            taskTitle: task.title,
-            status: studentTaskStatusLabel[rec.status],
-            overdue,
-          });
-        }
-      }
-    }
-
-    return result.sort(
-      (a, b) =>
-        Number(b.overdue) - Number(a.overdue) ||
-        a.className.localeCompare(b.className) ||
-        a.studentName.localeCompare(b.studentName)
-    );
-  }, [classTasks, classes, students, studentTaskRecords, classFilter, todayStr]);
+  const setReasonFilter = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === "all") next.delete("type");
+    else next.set("type", value);
+    setSearchParams(next, { replace: true });
+  };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Missing work"
-        description="Incomplete tasks across all classes."
+        title="Incomplete & to-do"
+        description="Unmarked attendance, missing work, and overdue tasks across your classes."
         actions={
-          <Select value={classFilter} onValueChange={setClassFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="Filter class" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All classes</SelectItem>
-              {classes.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Select value={classFilter} onValueChange={setClassFilter}>
+              <SelectTrigger className="w-full sm:w-44">
+                <SelectValue placeholder="Class" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All classes</SelectItem>
+                {activeClassList.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={reasonFilter} onValueChange={setReasonFilter}>
+              <SelectTrigger className="w-full sm:w-44">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                {ATTENTION_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         }
       />
 
-      {items.length === 0 ? (
+      {summary.total > 0 && (
+        <div className="space-y-2">
+          <IncompleteTodoSummaryChips summary={summary} />
+          {!hasLessonsToday && summary.noAttendance === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No classes scheduled today — attendance items only appear for classes that meet today.
+            </p>
+          )}
+        </div>
+      )}
+
+      {rows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No missing or overdue work right now.
+            {summary.total === 0
+              ? "All caught up — nothing needs follow-up right now."
+              : "No items match the current filters."}
           </CardContent>
         </Card>
       ) : (
         <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={`${item.taskId}-${item.studentId}`}>
-              <Card>
-                <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="font-medium">{item.studentName}</p>
-                    <p className="text-sm text-muted-foreground">
-                      <Link to={`/classes/${item.classId}`} className="hover:text-primary hover:underline">
-                        {item.className}
-                      </Link>
-                      {" · "}
-                      {item.taskTitle}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {item.overdue && (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Overdue
-                      </Badge>
-                    )}
-                    <Badge variant="outline">{item.status}</Badge>
-                  </div>
-                </CardContent>
-              </Card>
+          {rows.map((row) => (
+            <li key={row.id}>
+              <IncompleteTodoRowCard row={row} />
             </li>
           ))}
         </ul>

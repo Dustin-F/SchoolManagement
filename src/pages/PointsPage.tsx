@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { SkillFormDialog } from "@/features/points/SkillFormDialog";
 import { useAppStore } from "@/store";
+import { isArchived } from "@/lib/archiveUtils";
 import { usePagination } from "@/hooks/usePagination";
 import type { BehaviourSkill, PointEvent } from "@/types";
 import { formatDate } from "@/lib/utils";
@@ -180,24 +181,26 @@ export function PointsPage() {
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Class</label>
               <Select value={classFilter} onValueChange={setClassFilter}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-full sm:w-44">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All classes</SelectItem>
                   {classes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}{isArchived(c) ? " (Archived)" : ""}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <Button type="button" variant="outline" onClick={handleExport}>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={handleExport}>
               <Download className="mr-1.5 h-4 w-4" />
               Export CSV
             </Button>
           </div>
 
-          <div className="rounded-lg border border-border">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -224,8 +227,26 @@ export function PointsPage() {
                     return (
                       <TableRow key={e.id}>
                         <TableCell>{formatDate(e.date)}</TableCell>
-                        <TableCell>{getStudentName(e.studentId, students)}</TableCell>
-                        <TableCell>{cls?.name ?? "—"}</TableCell>
+                        <TableCell>
+                          <Link
+                            to={`/students/${e.studentId}`}
+                            className="font-medium text-foreground hover:text-primary transition-colors"
+                          >
+                            {getStudentName(e.studentId, students)}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          {cls ? (
+                            <Link
+                              to={`/classes/${cls.id}`}
+                              className="text-foreground hover:text-primary transition-colors"
+                            >
+                              {cls.name}
+                            </Link>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
                         <TableCell>
                           <span className="mr-1">{skill?.emoji}</span>
                           {skill?.name ?? "Unknown"}
@@ -272,7 +293,7 @@ export function PointsPage() {
         <div className="space-y-4">
           <div className="flex justify-between gap-2">
             <p className="text-sm text-muted-foreground">
-              Skills are shared across the whole school. Pin skills per class from the class page (coming in class settings) or use defaults.
+              Skills are shared across the whole school. Pin skills per class from the class points toolbar.
             </p>
             <Button
               type="button"
@@ -367,19 +388,21 @@ export function PointsPage() {
               This week
             </Button>
             <Select value={classFilter} onValueChange={setClassFilter}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-full min-w-[10rem] sm:w-44">
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All classes</SelectItem>
                 {classes.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}{isArchived(c) ? " (Archived)" : ""}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="rounded-lg border border-border">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -400,8 +423,22 @@ export function PointsPage() {
                 ) : (
                   weeklyRows.map((row) => (
                     <TableRow key={`${row.classId}-${row.studentId}`}>
-                      <TableCell>{row.studentName}</TableCell>
-                      <TableCell>{row.className}</TableCell>
+                      <TableCell>
+                        <Link
+                          to={`/students/${row.studentId}`}
+                          className="font-medium text-foreground hover:text-primary transition-colors"
+                        >
+                          {row.studentName}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          to={`/classes/${row.classId}`}
+                          className="text-foreground hover:text-primary transition-colors"
+                        >
+                          {row.className}
+                        </Link>
+                      </TableCell>
                       <TableCell className={cn("text-right font-semibold tabular-nums", row.weekPoints > 0 && "text-emerald-600", row.weekPoints < 0 && "text-amber-600")}>
                         {row.weekPoints > 0 ? `+${row.weekPoints}` : row.weekPoints}
                       </TableCell>

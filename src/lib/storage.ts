@@ -13,6 +13,12 @@ const TABLE_BY_KEY: Record<StorageKey, string> = {
   pointEvents: "app_point_events",
   classTasks: "app_class_tasks",
   studentTaskRecords: "app_student_task_records",
+  classSessionNotes: "app_class_session_notes",
+  classScheduleEvents: "app_class_schedule_events",
+  classSessionExceptions: "app_class_session_exceptions",
+  academicTerms: "app_academic_terms",
+  taskAssessmentCategories: "app_task_assessment_categories",
+  termGrades: "app_term_grades",
 };
 
 let currentUserId: string | null = null;
@@ -46,6 +52,12 @@ const TABLE_LABELS: Record<string, string> = {
   app_point_events: "Point events",
   app_class_tasks: "Class tasks",
   app_student_task_records: "Task records",
+  app_class_session_notes: "Lesson notes",
+  app_class_schedule_events: "Class schedule",
+  app_class_session_exceptions: "Schedule exceptions",
+  app_academic_terms: "Academic terms",
+  app_task_assessment_categories: "Assessment categories",
+  app_term_grades: "Term grades",
   config: "Environment (.env)",
 };
 
@@ -184,6 +196,14 @@ function schedulePersist(keys: StorageKey[]) {
   persistTimer = setTimeout(() => {
     void persistNow();
   }, 350);
+}
+
+export async function flushCloudPersist(): Promise<void> {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  await persistNow();
 }
 
 async function persistNow() {

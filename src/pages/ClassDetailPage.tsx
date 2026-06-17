@@ -13,10 +13,15 @@ import {
   Sparkles,
   Play,
   Award,
+  Archive,
+  RotateCcw,
+  MoreHorizontal,
+  LayoutGrid,
+  ArrowLeft,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
   DropdownMenu,
@@ -54,20 +59,32 @@ import {
 } from "@/components/ui/dialog";
 import { useAppStore } from "@/store";
 import { getStudentDisplayName, getTeacherDisplayName } from "@/lib/displayHelpers";
-import { cn, DAY_SHORT, DAY_ORDER, getLocalToday, isIsoDateString } from "@/lib/utils";
+import { cn, DAY_SHORT, getLocalToday, isIsoDateString } from "@/lib/utils";
 import {
   STUDENT_TASK_STATUS_ORDER,
   studentTaskStatusLabel,
   studentTaskStatusSelectClass,
 } from "@/lib/studentTaskStatus";
 import { deadlineDay } from "@/lib/taskUtils";
+import { dayOfWeekFromDate, getOccurrencesOnDate, getScheduledDatesInRange, formatOccurrenceTime } from "@/lib/scheduleUtils";
+import { findSessionNote } from "@/lib/sessionNotesUtils";
 import { AddExistingStudentDialog } from "@/features/classes/AddExistingStudentDialog";
 import { StudentFormDialog } from "@/features/students/StudentFormDialog";
 import { StudentImportDialog } from "@/features/students/StudentImportDialog";
-import { ClassTaskFormDialog } from "@/features/tasks/ClassTaskFormDialog";
 import { TaskProgressDialog } from "@/features/tasks/TaskProgressDialog";
+import { TaskScoreInput, type TaskScoreUpdate } from "@/features/tasks/TaskScoreInput";
+import { isRubricMode } from "@/lib/taskScoringUtils";
 import { StudentRosterTable } from "@/features/classes/StudentRosterTable";
 import { ClassTasksSection } from "@/features/classes/ClassTasksSection";
+import { ClassTermGradesSection } from "@/features/assessment/ClassTermGradesSection";
+import { ClassSessionNotesCard } from "@/features/classes/ClassSessionNotesCard";
+import { ClassOverviewTab } from "@/features/classes/ClassOverviewTab";
+import { ClassIncompleteSection, useClassIncompleteCount } from "@/features/classes/ClassIncompleteSection";
+import { SessionStatusBadge } from "@/features/classes/SessionStatusBadge";
+import {
+  getEffectiveSessionStatus,
+  shouldAutoCompleteSession,
+} from "@/lib/sessionUtils";
 import type {
   AttendanceStatus,
   ClassTask,
@@ -79,6 +96,7 @@ import { resolveSeatGrid, studentsFromSeatGrid } from "@/lib/seatingUtils";
 import { getAttendanceAlerts } from "@/lib/attentionUtils";
 import { useClassKeyboardShortcuts } from "@/hooks/useClassKeyboardShortcuts";
 import { showUndoToast } from "@/lib/undoToast";
+import { isArchived } from "@/lib/archiveUtils";
 import type { AttendanceReasonCode, BehaviourSkill } from "@/types";
 
 export function ClassDetailPage() {
@@ -86,6 +104,8 @@ export function ClassDetailPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get("date");
+  const eventIdParam = searchParams.get("eventId");
+  const occurrenceParam = searchParams.get("occurrence");
   const classes = useAppStore((s) => s.classes);
   const students = useAppStore((s) => s.students);
   const teachers = useAppStore((s) => s.teachers);
@@ -94,6 +114,9 @@ export function ClassDetailPage() {
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
   const attendance = useAppStore((s) => s.attendance);
   const pointEvents = useAppStore((s) => s.pointEvents);
+  const classSessionNotes = useAppStore((s) => s.classSessionNotes);
+  const classScheduleEvents = useAppStore((s) => s.classScheduleEvents);
+  const classSessionExceptions = useAppStore((s) => s.classSessionExceptions);
   const addAttendance = useAppStore((s) => s.addAttendance);
   const updateAttendance = useAppStore((s) => s.updateAttendance);
   const deleteAttendance = useAppStore((s) => s.deleteAttendance);
@@ -101,26 +124,27 @@ export function ClassDetailPage() {
   const addPointEvent = useAppStore((s) => s.addPointEvent);
   const deletePointEvent = useAppStore((s) => s.deletePointEvent);
   const updateStudentTaskRecord = useAppStore((s) => s.updateStudentTaskRecord);
+  const upsertClassSession = useAppStore((s) => s.upsertClassSession);
   const deleteClassTask = useAppStore((s) => s.deleteClassTask);
   const archiveClassTask = useAppStore((s) => s.archiveClassTask);
   const unarchiveClassTask = useAppStore((s) => s.unarchiveClassTask);
+  const archiveClass = useAppStore((s) => s.archiveClass);
+  const restoreClass = useAppStore((s) => s.restoreClass);
+  const [archiveClassOpen, setArchiveClassOpen] = useState(false);
 
   const [addExistingOpen, setAddExistingOpen] = useState(false);
   const [createStudentOpen, setCreateStudentOpen] = useState(false);
   const [importStudentsOpen, setImportStudentsOpen] = useState(false);
-  const [taskFormOpen, setTaskFormOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<ClassTask | null>(null);
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<ClassTask | null>(null);
   const [progressRecord, setProgressRecord] = useState<StudentTaskRecord | null>(null);
+  const [progressTask, setProgressTask] = useState<ClassTask | null>(null);
   const [progressStudentName, setProgressStudentName] = useState("");
-  const [progressTaskTitle, setProgressTaskTitle] = useState("");
-  const [progressMaxScore, setProgressMaxScore] = useState<number | null | undefined>();
   const [randomPickerOpen, setRandomPickerOpen] = useState(false);
   const [randomStudentId, setRandomStudentId] = useState<string | null>(null);
   const [randomCycleShownIds, setRandomCycleShownIds] = useState<string[]>([]);
   const [quickAttendance, setQuickAttendance] = useState<AttendanceStatus | null>(null);
-  const [quickTaskUpdates, setQuickTaskUpdates] = useState<
-    Record<string, { recordId: string; status: StudentTaskStatus; score: string }>
+  const [quickTaskStatuses, setQuickTaskStatuses] = useState<
+    Record<string, { recordId: string; status: StudentTaskStatus }>
   >({});
   const [rosterSelectedId, setRosterSelectedId] = useState<string | null>(null);
 
@@ -155,6 +179,58 @@ export function ClassDetailPage() {
   );
 
   const cls = classes.find((c) => c.id === id);
+  const incompleteCount = useClassIncompleteCount(id ?? "");
+  const classIsArchived = cls ? isArchived(cls) : false;
+
+  const dayOccurrences = useMemo(() => {
+    if (!cls) return [];
+    return getOccurrencesOnDate(cls.id, attendanceDate, classScheduleEvents, classSessionExceptions);
+  }, [cls, attendanceDate, classScheduleEvents, classSessionExceptions]);
+
+  const activeOccurrence = useMemo(() => {
+    if (eventIdParam) {
+      const match = dayOccurrences.find(
+        (o) => o.eventId === eventIdParam && o.occurrenceDate === (occurrenceParam ?? o.occurrenceDate)
+      );
+      if (match) return match;
+    }
+    return dayOccurrences[0];
+  }, [dayOccurrences, eventIdParam, occurrenceParam]);
+
+  const sessionRecord = useMemo(
+    () =>
+      findSessionNote(
+        classSessionNotes,
+        cls?.id ?? "",
+        attendanceDate,
+        activeOccurrence?.eventId,
+        activeOccurrence?.occurrenceDate
+      ),
+    [cls?.id, attendanceDate, classSessionNotes, activeOccurrence]
+  );
+
+  const sessionHighlightDates = useMemo(() => {
+    if (!cls) return [];
+    const start = new Date(`${attendanceDate}T12:00:00`);
+    start.setMonth(start.getMonth() - 2);
+    const end = new Date(`${attendanceDate}T12:00:00`);
+    end.setMonth(end.getMonth() + 4);
+    return getScheduledDatesInRange(
+      cls.id,
+      classScheduleEvents,
+      classSessionExceptions,
+      start.toISOString().slice(0, 10),
+      end.toISOString().slice(0, 10)
+    );
+  }, [cls, attendanceDate, classScheduleEvents, classSessionExceptions]);
+
+  const sessionContext = useMemo(
+    () => ({
+      eventId: activeOccurrence?.eventId,
+      occurrenceDate: activeOccurrence?.occurrenceDate ?? attendanceDate,
+    }),
+    [activeOccurrence, attendanceDate]
+  );
 
   const activeTasksForClass = useMemo(
     () =>
@@ -234,9 +310,38 @@ export function ClassDetailPage() {
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
   }, [classStudents, pointsTodayByStudent]);
   const subject = subjects.find((s) => s.id === (cls?.subjectId ?? ""));
-  const sortedSchedule = [...(cls?.schedule ?? [])].sort(
-    (a, b) => DAY_ORDER.indexOf(a.dayOfWeek) - DAY_ORDER.indexOf(b.dayOfWeek)
-  );
+
+  useEffect(() => {
+    if (!cls || !activeOccurrence || sessionRecord) return;
+    upsertClassSession(cls.id, attendanceDate, {
+      eventId: activeOccurrence.eventId,
+      occurrenceDate: activeOccurrence.occurrenceDate,
+      status: "planned",
+    });
+  }, [attendanceDate, cls, activeOccurrence, sessionRecord, upsertClassSession]);
+
+  useEffect(() => {
+    if (!cls || !activeOccurrence || classIsArchived) return;
+    const maybeAutoComplete = () => {
+      if (!shouldAutoCompleteSession(sessionRecord, activeOccurrence)) return;
+      upsertClassSession(cls.id, attendanceDate, {
+        eventId: activeOccurrence.eventId,
+        occurrenceDate: activeOccurrence.occurrenceDate,
+        status: "completed",
+        completedAt: new Date().toISOString(),
+      });
+    };
+    maybeAutoComplete();
+    const id = window.setInterval(maybeAutoComplete, 60_000);
+    return () => window.clearInterval(id);
+  }, [
+    attendanceDate,
+    cls,
+    activeOccurrence,
+    classIsArchived,
+    sessionRecord,
+    upsertClassSession,
+  ]);
 
   const toolbarSkills = useMemo(
     () => (cls ? skillsForClassToolbar(behaviourSkills, cls) : []),
@@ -253,6 +358,7 @@ export function ClassDetailPage() {
 
   const awardSkillToStudent = useCallback(
     (studentId: string, skill: BehaviourSkill) => {
+      if (classIsArchived) return;
       const eventId = addPointEvent({
         studentId,
         skillId: skill.id,
@@ -267,11 +373,19 @@ export function ClassDetailPage() {
         () => deletePointEvent(eventId)
       );
     },
-    [addPointEvent, deletePointEvent, cls?.id, attendanceDate, classStudents]
+    [
+      addPointEvent,
+      deletePointEvent,
+      cls?.id,
+      attendanceDate,
+      classStudents,
+      classIsArchived,
+    ]
   );
 
   const awardSkillToStudents = useCallback(
     (studentIds: string[], skill: BehaviourSkill) => {
+      if (classIsArchived) return;
       if (studentIds.length === 0) return;
       const eventIds = studentIds.map((studentId) =>
         addPointEvent({
@@ -293,7 +407,14 @@ export function ClassDetailPage() {
           : `${sign}${skill.points} ${skill.name} → ${studentIds.length} students`;
       showUndoToast(label, () => eventIds.forEach((id) => deletePointEvent(id)));
     },
-    [addPointEvent, deletePointEvent, cls?.id, attendanceDate, classStudents]
+    [
+      addPointEvent,
+      deletePointEvent,
+      cls?.id,
+      attendanceDate,
+      classStudents,
+      classIsArchived,
+    ]
   );
 
   const cycleNextStudent = useCallback(() => {
@@ -307,6 +428,7 @@ export function ClassDetailPage() {
 
   const markAttendance = useCallback(
     (studentId: string, status: AttendanceStatus, reasonCode?: AttendanceReasonCode) => {
+      if (classIsArchived) return;
       const existing = dayAttendanceRows.find((a) => a.studentId === studentId);
       const prevStatus = existing?.status ?? null;
       const prevReason = existing?.reasonCode;
@@ -330,11 +452,19 @@ export function ClassDetailPage() {
         showUndoToast(`Attendance: ${status}`, () => deleteAttendance(newId));
       }
     },
-    [dayAttendanceRows, updateAttendance, addAttendance, deleteAttendance, cls?.id, attendanceDate]
+    [
+      dayAttendanceRows,
+      updateAttendance,
+      addAttendance,
+      deleteAttendance,
+      cls?.id,
+      attendanceDate,
+      classIsArchived,
+    ]
   );
 
   useClassKeyboardShortcuts({
-    enabled: !!cls,
+    enabled: !!cls && !classIsArchived,
     toolbarSkills,
     selectedStudentId: rosterSelectedId,
     onMarkPresent: (id) => markAttendance(id, "present"),
@@ -342,36 +472,106 @@ export function ClassDetailPage() {
     onNextStudent: cycleNextStudent,
   });
 
-  const onTaskStatusChange = useCallback(
-    (recordId: string, status: StudentTaskStatus) => {
-      const prev = studentTaskRecords.find((r) => r.id === recordId);
-      const prevStatus = prev?.status;
-      updateStudentTaskRecord(recordId, { status });
-      showUndoToast(`Task: ${studentTaskStatusLabel[status]}`, () => {
-        if (prevStatus) updateStudentTaskRecord(recordId, { status: prevStatus });
-      });
-    },
-    [updateStudentTaskRecord, studentTaskRecords]
-  );
-
-  const onTaskScoreBlur = useCallback(
-    (record: StudentTaskRecord, raw: string) => {
-      const t = raw.trim();
-      const next = t === "" ? null : Number(t);
-      if (next !== record.score && (t === "" || Number.isFinite(next))) {
-        updateStudentTaskRecord(record.id, { score: next });
+  const onTaskScoreUpdate = useCallback(
+    (record: StudentTaskRecord, update: TaskScoreUpdate) => {
+      if (classIsArchived) return;
+      const patch: Partial<StudentTaskRecord> = {};
+      if (update.score !== undefined && update.score !== record.score) patch.score = update.score;
+      if (update.letterGrade !== undefined && update.letterGrade !== record.letterGrade) {
+        patch.letterGrade = update.letterGrade;
+      }
+      if ("criterionScores" in update) {
+        const prev = record.criterionScores ?? null;
+        const next = update.criterionScores ?? null;
+        if (JSON.stringify(next) !== JSON.stringify(prev)) {
+          patch.criterionScores = update.criterionScores ?? undefined;
+        }
+      }
+      if (Object.keys(patch).length > 0) {
+        updateStudentTaskRecord(record.id, patch);
       }
     },
-    [updateStudentTaskRecord]
+    [updateStudentTaskRecord, classIsArchived]
   );
 
   const openProgress = (record: StudentTaskRecord, task: ClassTask) => {
+    if (classIsArchived) return;
     const st = students.find((s) => s.id === record.studentId);
     setProgressStudentName(st ? getStudentDisplayName(st) : "Student");
-    setProgressTaskTitle(task.title);
-    setProgressMaxScore(task.maxScore);
+    setProgressTask(task);
     setProgressRecord(record);
   };
+
+  type ClassTab = "overview" | "tasks" | "incomplete" | "grades";
+
+  const isSessionView = !!(dateParam || eventIdParam);
+
+  const classTab: ClassTab = useMemo(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "tasks" || tab === "incomplete" || tab === "grades") {
+      return tab;
+    }
+    return "overview";
+  }, [searchParams]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "session" || tab === "schedule") {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("tab");
+          return next;
+        },
+        { replace: true }
+      );
+      if (tab === "schedule") {
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${window.location.search}#schedule`
+        );
+      }
+    }
+  }, [searchParams, setSearchParams]);
+
+  const setClassTab = useCallback(
+    (tab: ClassTab) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("date");
+          next.delete("eventId");
+          next.delete("occurrence");
+          if (tab === "overview") next.delete("tab");
+          else next.set("tab", tab);
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const exitSessionView = useCallback(() => {
+    const from = searchParams.get("from");
+    if (from?.startsWith("/")) {
+      navigate(from);
+      return;
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("date");
+        next.delete("eventId");
+        next.delete("occurrence");
+        next.delete("tab");
+        next.delete("from");
+        return next;
+      },
+      { replace: true }
+    );
+  }, [navigate, searchParams, setSearchParams]);
 
   const pickRandomStudentId = (ids: string[]) => {
     if (ids.length === 0) return null;
@@ -381,17 +581,13 @@ export function ClassDetailPage() {
 
   const setupQuickPickerState = (studentId: string) => {
     setQuickAttendance(getAttendanceStatus(studentId));
-    const updates: Record<string, { recordId: string; status: StudentTaskStatus; score: string }> = {};
+    const statuses: Record<string, { recordId: string; status: StudentTaskStatus }> = {};
     for (const task of activeTasksForClass) {
       const rec = getTaskRecord(task.id, studentId);
       if (!rec) continue;
-      updates[task.id] = {
-        recordId: rec.id,
-        status: rec.status,
-        score: rec.score != null ? String(rec.score) : "",
-      };
+      statuses[task.id] = { recordId: rec.id, status: rec.status };
     }
-    setQuickTaskUpdates(updates);
+    setQuickTaskStatuses(statuses);
   };
 
   const openRandomStudentPicker = () => {
@@ -407,17 +603,13 @@ export function ClassDetailPage() {
   };
 
   const saveQuickUpdates = () => {
+    if (classIsArchived) return;
     if (!randomStudentId) return;
     if (quickAttendance) {
       markAttendance(randomStudentId, quickAttendance);
     }
-    Object.values(quickTaskUpdates).forEach((u) => {
-      const trimmed = u.score.trim();
-      const score = trimmed === "" ? null : Number(trimmed);
-      updateStudentTaskRecord(u.recordId, {
-        status: u.status,
-        score: trimmed === "" || Number.isFinite(score) ? score : null,
-      });
+    Object.values(quickTaskStatuses).forEach((u) => {
+      updateStudentTaskRecord(u.recordId, { status: u.status });
     });
     toast.success("Quick updates saved.");
   };
@@ -471,31 +663,194 @@ export function ClassDetailPage() {
     );
   }
 
+  const isFocusedTab = classTab === "tasks" || classTab === "grades" || classTab === "incomplete";
+  const sessionStatus = getEffectiveSessionStatus(
+    sessionRecord,
+    activeOccurrence
+      ? { date: activeOccurrence.date, endTime: activeOccurrence.endTime }
+      : undefined
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-gradient">{cls.name}</h2>
-            {(cls.classroomNumber || subject) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-bold tracking-tight text-gradient">{cls.name}</h2>
+              {classIsArchived && <Badge variant="outline">Archived</Badge>}
+              {isSessionView && sessionRecord?.lessonPrepared && (
+                <Badge variant="secondary">Lesson prepared</Badge>
+              )}
+              {isSessionView && activeOccurrence && (
+                <Badge variant="secondary">
+                  {formatOccurrenceTime(activeOccurrence.startTime, activeOccurrence.endTime)}
+                </Badge>
+              )}
+              {isSessionView && activeOccurrence && (
+                <SessionStatusBadge
+                  classId={cls.id}
+                  sessionDate={attendanceDate}
+                  eventId={sessionContext.eventId}
+                  occurrenceDate={sessionContext.occurrenceDate}
+                  status={sessionStatus}
+                  disabled={classIsArchived}
+                />
+              )}
+              {isSessionView && !activeOccurrence && (
+                <Badge variant="outline">Unscheduled date</Badge>
+              )}
+            </div>
+            {isSessionView && (cls.classroomNumber || subject || activeOccurrence) && (
               <p className="text-sm text-muted-foreground">
                 {cls.classroomNumber && <span>Room {cls.classroomNumber}</span>}
                 {cls.classroomNumber && subject && <span aria-hidden> · </span>}
                 {subject && <span>{subject.name}</span>}
+                {activeOccurrence?.title && (
+                  <>
+                    {(cls.classroomNumber || subject) && <span aria-hidden> · </span>}
+                    <span>{activeOccurrence.title}</span>
+                  </>
+                )}
               </p>
             )}
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <Link to={`/attendance?classId=${cls.id}`} className="hover:text-primary hover:underline">
-                Full attendance page
-              </Link>
-              <span aria-hidden className="text-border">·</span>
-              <Link to={`/points?classId=${cls.id}`} className="hover:text-primary hover:underline">
-                Points history
-              </Link>
-            </div>
+            {!isSessionView && (subject || cls.classroomNumber) && (
+              <p className="text-sm text-muted-foreground">
+                {subject && <span>{subject.name}</span>}
+                {subject && cls.classroomNumber && <span aria-hidden> · </span>}
+                {cls.classroomNumber && <span>Room {cls.classroomNumber}</span>}
+              </p>
+            )}
+            {isSessionView && (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <Link to={`/attendance?classId=${cls.id}`} className="hover:text-primary hover:underline">
+                  Full attendance page
+                </Link>
+                <span aria-hidden className="text-border">·</span>
+                <Link to={`/points?classId=${cls.id}`} className="hover:text-primary hover:underline">
+                  Points history
+                </Link>
+              </div>
+            )}
           </div>
         </div>
+        {!isFocusedTab && !isSessionView && classTab !== "overview" && (
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
+            {classIsArchived ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 sm:flex-none"
+                onClick={() => {
+                  restoreClass(cls.id);
+                  toast.success(`"${cls.name}" restored.`);
+                }}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Restore class
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" className="flex-1 sm:flex-none">
+                    <MoreHorizontal className="mr-2 h-4 w-4" />
+                    Class options
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setArchiveClassOpen(true)}
+                  >
+                    <Archive className="mr-2 h-4 w-4" />
+                    Archive class
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        )}
       </div>
+
+      {classIsArchived && isSessionView && (
+        <Card className="border-muted-foreground/25 bg-muted/30">
+          <CardContent className="py-4 text-sm text-muted-foreground">
+            This class is archived. You can review history below, but attendance, points, and tasks cannot be changed
+            until you restore it.
+          </CardContent>
+        </Card>
+      )}
+
+      {isSessionView && (
+        <Button type="button" variant="ghost" size="sm" className="-mt-2 h-8 px-2" onClick={exitSessionView}>
+          <ArrowLeft className="mr-1.5 h-4 w-4" />
+          Back to class
+        </Button>
+      )}
+
+      {!isSessionView && (
+      <div className="flex w-fit flex-wrap gap-1 rounded-lg border border-border bg-muted/30 p-1">
+        <Button
+          type="button"
+          variant={classTab === "overview" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("overview")}
+        >
+          <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
+          Overview
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "tasks" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("tasks")}
+        >
+          Tasks
+          {activeTasksForClass.length > 0 && (
+            <span className="ml-1.5 rounded-full bg-background/80 px-1.5 text-xs tabular-nums">
+              {activeTasksForClass.length}
+            </span>
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "incomplete" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("incomplete")}
+        >
+          <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
+          To-do
+          {incompleteCount > 0 && (
+            <span className="ml-1.5 rounded-full bg-background/80 px-1.5 text-xs tabular-nums">
+              {incompleteCount}
+            </span>
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "grades" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("grades")}
+        >
+          <GraduationCap className="mr-1.5 h-3.5 w-3.5" />
+          Term grades
+        </Button>
+      </div>
+      )}
+
+      {isSessionView ? (
+        <>
+      <ClassSessionNotesCard
+        classId={cls.id}
+        sessionDate={attendanceDate}
+        eventId={sessionContext.eventId}
+        occurrenceDate={sessionContext.occurrenceDate}
+        readOnly={classIsArchived}
+      />
 
       <Card>
         <CardContent className="space-y-5 p-6">
@@ -522,19 +877,36 @@ export function ClassDetailPage() {
             <div>
               <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Clock className="h-4 w-4" />
-                Schedule
+                Sessions this day
               </p>
-              {sortedSchedule.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No times set.</p>
+              {dayOccurrences.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No sessions scheduled this day.</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5 text-xs">
-                  {sortedSchedule.map((entry) => (
-                    <span
-                      key={entry.id}
-                      className="rounded-md border border-border bg-muted/40 px-2 py-1"
+                  {dayOccurrences.map((occ) => (
+                    <button
+                      key={`${occ.eventId}:${occ.occurrenceDate}`}
+                      type="button"
+                      className={cn(
+                        "rounded-md border px-2 py-1 transition-colors",
+                        activeOccurrence?.eventId === occ.eventId &&
+                          activeOccurrence.occurrenceDate === occ.occurrenceDate
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-muted/40 hover:bg-muted"
+                      )}
+                      onClick={() => {
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set("date", occ.date);
+                          next.set("eventId", occ.eventId);
+                          next.set("occurrence", occ.occurrenceDate);
+                          return next;
+                        });
+                      }}
                     >
-                      {DAY_SHORT[entry.dayOfWeek]} {entry.startTime}–{entry.endTime}
-                    </span>
+                      {occ.title?.trim() || DAY_SHORT[dayOfWeekFromDate(occ.date)]}{" "}
+                      {formatOccurrenceTime(occ.startTime, occ.endTime)}
+                    </button>
                   ))}
                 </div>
               )}
@@ -581,7 +953,7 @@ export function ClassDetailPage() {
             <span className="inline-flex">
               <Button
                 onClick={() => openRandomStudentPicker()}
-                disabled={classStudents.length === 0}
+                disabled={classIsArchived || classStudents.length === 0}
               >
                 <Play className="mr-1.5 h-4 w-4" />
                 Random student check
@@ -614,14 +986,15 @@ export function ClassDetailPage() {
                   id="class-attendance-date"
                   value={attendanceDate}
                   onChange={setAttendanceDateWithUrl}
-                  className="h-9 w-44"
+                  highlightDates={sessionHighlightDates}
+                  className="h-9 w-full sm:w-44"
                 />
               </div>
             </HintTooltip>
             <DropdownMenu>
               <HintTooltip content="Add or import students, or open full attendance and points pages.">
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline">
+                  <Button size="sm" variant="outline" disabled={classIsArchived}>
                     <UserPlus className="mr-1.5 h-3.5 w-3.5" />
                     More
                     <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" />
@@ -670,40 +1043,12 @@ export function ClassDetailPage() {
             selectedStudentId={rosterSelectedId}
             onSelectedStudentChange={setRosterSelectedId}
             onMarkAttendance={markAttendance}
-            onTaskStatusChange={onTaskStatusChange}
-            onTaskScoreBlur={onTaskScoreBlur}
-            onOpenProgress={openProgress}
             onAwardSkill={awardSkillToStudent}
             onAwardSkillBulk={awardSkillToStudents}
-            archivedTaskCount={archivedTasksForClass.length}
+            readOnly={classIsArchived}
           />
         </CardContent>
       </Card>
-
-      <ClassTasksSection
-        classId={cls.id}
-        activeTasks={activeTasksForClass}
-        archivedTasks={archivedTasksForClass}
-        studentTaskRecords={studentTaskRecords}
-        enrolledStudentIds={cls.studentIds}
-        onEditTask={(task) => {
-          setEditingTask(task);
-          setTaskFormOpen(true);
-        }}
-        onDeleteTask={(task) => setDeleteTaskTarget(task)}
-        onArchiveTask={(id) => {
-          archiveClassTask(id);
-          toast.success("Task archived.");
-        }}
-        onUnarchiveTask={(id) => {
-          unarchiveClassTask(id);
-          toast.success("Task restored.");
-        }}
-        onNewTask={() => {
-          setEditingTask(null);
-          setTaskFormOpen(true);
-        }}
-      />
 
       <Card>
         <CardHeader className="pb-2">
@@ -743,6 +1088,32 @@ export function ClassDetailPage() {
           )}
         </CardContent>
       </Card>
+        </>
+      ) : classTab === "overview" ? (
+        <ClassOverviewTab cls={cls} />
+      ) : classTab === "tasks" ? (
+        <ClassTasksSection
+          classId={cls.id}
+          activeTasks={activeTasksForClass}
+          archivedTasks={archivedTasksForClass}
+          studentTaskRecords={studentTaskRecords}
+          enrolledStudentIds={cls.studentIds}
+          onDeleteTask={(task) => setDeleteTaskTarget(task)}
+          onArchiveTask={(id) => {
+            archiveClassTask(id);
+            toast.success("Task archived.");
+          }}
+          onUnarchiveTask={(id) => {
+            unarchiveClassTask(id);
+            toast.success("Task restored.");
+          }}
+          readOnly={classIsArchived}
+        />
+      ) : classTab === "incomplete" ? (
+        <ClassIncompleteSection classId={cls.id} />
+      ) : (
+        <ClassTermGradesSection cls={cls} readOnly={classIsArchived} />
+      )}
 
       <AddExistingStudentDialog
         open={addExistingOpen}
@@ -764,25 +1135,17 @@ export function ClassDetailPage() {
         lockToClass
       />
 
-      <ClassTaskFormDialog
-        open={taskFormOpen}
-        onOpenChange={(o) => {
-          setTaskFormOpen(o);
-          if (!o) setEditingTask(null);
-        }}
-        classId={cls.id}
-        editingTask={editingTask}
-      />
-
       <TaskProgressDialog
         open={!!progressRecord}
         onOpenChange={(o) => {
-          if (!o) setProgressRecord(null);
+          if (!o) {
+            setProgressRecord(null);
+            setProgressTask(null);
+          }
         }}
         record={progressRecord}
+        task={progressTask}
         studentName={progressStudentName}
-        taskTitle={progressTaskTitle}
-        maxScore={progressMaxScore}
       />
 
       <Dialog
@@ -792,7 +1155,7 @@ export function ClassDetailPage() {
           if (!open) {
             setRandomStudentId(null);
             setRandomCycleShownIds([]);
-            setQuickTaskUpdates({});
+            setQuickTaskStatuses({});
             setQuickAttendance(null);
           }
         }}
@@ -873,8 +1236,9 @@ export function ClassDetailPage() {
                       ) : (
                         <div className="space-y-2">
                           {activeTasksForClass.map((task) => {
-                            const update = quickTaskUpdates[task.id];
-                            if (!update) {
+                            const statusUpdate = quickTaskStatuses[task.id];
+                            const rec = getTaskRecord(task.id, current.id);
+                            if (!statusUpdate || !rec) {
                               return (
                                 <div
                                   key={task.id}
@@ -896,9 +1260,9 @@ export function ClassDetailPage() {
                                   </p>
                                 </div>
                                 <Select
-                                  value={update.status}
+                                  value={statusUpdate.status}
                                   onValueChange={(v) =>
-                                    setQuickTaskUpdates((prev) => ({
+                                    setQuickTaskStatuses((prev) => ({
                                       ...prev,
                                       [task.id]: { ...prev[task.id], status: v as StudentTaskStatus },
                                     }))
@@ -907,7 +1271,7 @@ export function ClassDetailPage() {
                                   <SelectTrigger
                                     className={cn(
                                       "h-8 w-37 shrink-0 text-xs",
-                                      studentTaskStatusSelectClass(update.status)
+                                      studentTaskStatusSelectClass(statusUpdate.status)
                                     )}
                                   >
                                     <SelectValue />
@@ -920,20 +1284,24 @@ export function ClassDetailPage() {
                                     ))}
                                   </SelectContent>
                                 </Select>
-                                <Input
-                                  type="number"
-                                  step={0.5}
-                                  placeholder="Pts"
-                                  className="h-8 w-16 text-xs"
-                                  value={update.score}
-                                  title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
-                                  onChange={(e) =>
-                                    setQuickTaskUpdates((prev) => ({
-                                      ...prev,
-                                      [task.id]: { ...prev[task.id], score: e.target.value },
-                                    }))
-                                  }
-                                />
+                                {isRubricMode(task) ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-xs"
+                                    onClick={() => openProgress(rec, task)}
+                                  >
+                                    Score rubric
+                                  </Button>
+                                ) : (
+                                  <TaskScoreInput
+                                    task={task}
+                                    record={rec}
+                                    compact
+                                    onScoreUpdate={onTaskScoreUpdate}
+                                  />
+                                )}
                               </div>
                             );
                           })}
@@ -962,6 +1330,30 @@ export function ClassDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={archiveClassOpen} onOpenChange={setArchiveClassOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive class</AlertDialogTitle>
+            <AlertDialogDescription>
+              Archive &quot;{cls.name}&quot;? It will be hidden from your dashboard and class list, but attendance,
+              points, and tasks are kept. You can restore it later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                archiveClass(cls.id);
+                toast.success(`"${cls.name}" archived.`);
+                setArchiveClassOpen(false);
+              }}
+            >
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteTaskTarget} onOpenChange={(open) => !open && setDeleteTaskTarget(null)}>
         <AlertDialogContent>

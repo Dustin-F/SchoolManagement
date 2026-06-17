@@ -1,11 +1,4 @@
-import type {
-  AttendanceStatus,
-  ClassTask,
-  SchoolClass,
-  Student,
-  StudentTaskRecord,
-  StudentTaskStatus,
-} from "@/types";
+import type { AttendanceStatus, SchoolClass, Student } from "@/types";
 import {
   Dialog,
   DialogContent,
@@ -22,14 +15,9 @@ interface RosterStudentDetailDialogProps {
   student: Student | null;
   pointsToday: number;
   attendanceStatus: AttendanceStatus | null;
-  activeTasks: ClassTask[];
-  getTaskRecord: (taskId: string, studentId: string) => StudentTaskRecord | undefined;
-  archivedTaskCount: number;
-  todayStr: string;
   onMarkAttendance: (status: AttendanceStatus) => void;
-  onTaskStatusChange: (recordId: string, status: StudentTaskStatus) => void;
-  onTaskScoreBlur: (record: StudentTaskRecord, raw: string) => void;
-  onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
+  readOnly?: boolean;
+  returnTo?: string;
 }
 
 export function RosterStudentDetailDialog({
@@ -41,14 +29,9 @@ export function RosterStudentDetailDialog({
   student,
   pointsToday,
   attendanceStatus,
-  activeTasks,
-  getTaskRecord,
-  archivedTaskCount,
-  todayStr,
   onMarkAttendance,
-  onTaskStatusChange,
-  onTaskScoreBlur,
-  onOpenProgress,
+  readOnly = false,
+  returnTo,
 }: RosterStudentDetailDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,27 +42,32 @@ export function RosterStudentDetailDialog({
               student={student}
               pointsToday={pointsToday}
               attendanceStatus={attendanceStatus}
-              activeTasks={activeTasks}
-              getTaskRecord={getTaskRecord}
-              archivedTaskCount={archivedTaskCount}
-              todayStr={todayStr}
+              activeTasks={[]}
+              getTaskRecord={() => undefined}
+              archivedTaskCount={0}
+              todayStr=""
               onMarkAttendance={onMarkAttendance}
-              onTaskStatusChange={onTaskStatusChange}
-              onTaskScoreBlur={onTaskScoreBlur}
-              onOpenProgress={onOpenProgress}
+              onTaskStatusChange={() => {}}
+              onTaskScoreUpdate={() => {}}
+              onOpenProgress={() => {}}
+              readOnly={readOnly}
+              showTasks={false}
               showSeatNames
+              returnTo={returnTo}
               variant="dialog"
               className="border-0 p-0 shadow-none"
             />
-            <div className="border-t border-border pt-4">
-              <ClassPointsToolbar
-                cls={cls}
-                students={students}
-                sessionDate={sessionDate}
-                selectedStudentId={student.id}
-                embedded
-              />
-            </div>
+            {!readOnly && (
+              <div className="border-t border-border pt-4">
+                <ClassPointsToolbar
+                  cls={cls}
+                  students={students}
+                  sessionDate={sessionDate}
+                  selectedStudentId={student.id}
+                  embedded
+                />
+              </div>
+            )}
           </div>
         )}
       </DialogContent>

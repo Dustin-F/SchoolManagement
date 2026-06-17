@@ -63,6 +63,7 @@ interface ClassSeatingGridProps {
   onSelectStudent: (studentId: string) => void;
   pointsTodayByStudent: Map<string, number>;
   getAttendanceStatus: (studentId: string) => AttendanceStatus | null;
+  readOnly?: boolean;
 }
 
 interface DragHandleProps {
@@ -95,12 +96,12 @@ function SeatCard({
   style,
 }: SeatCardProps) {
   const names = getStudentSeatNames(student);
-  const hasAnyName = names.english || names.pinyin || names.chinese;
+  const hasAnyName = names.name1 || names.name2 || names.name3;
 
   const card = (
     <div
       className={cn(
-        "relative flex h-full min-h-[7.5rem] cursor-pointer flex-col items-center justify-center rounded-xl border p-2 text-center",
+        "relative flex h-full min-h-[5.75rem] cursor-pointer flex-col items-center justify-center rounded-xl border p-1.5 text-center sm:min-h-[7.5rem] sm:p-2",
         bulkSelected
           ? "border-blue-500 bg-blue-500/10 ring-2 ring-blue-500/30"
           : selected
@@ -159,19 +160,19 @@ function SeatCard({
         />
       )}
       <div className="mt-1 flex w-full min-w-0 flex-col items-center justify-center gap-0.5 px-0.5">
-        {names.english && (
+        {names.name1 && (
           <p className="line-clamp-2 w-full text-[11px] font-semibold leading-tight text-foreground sm:text-xs">
-            {names.english}
+            {names.name1}
           </p>
         )}
-        {names.pinyin && (
-          <p className="line-clamp-1 w-full text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
-            {names.pinyin}
-          </p>
-        )}
-        {names.chinese && (
+        {names.name2 && (
           <p className="line-clamp-1 w-full text-[11px] leading-tight text-foreground sm:text-xs">
-            {names.chinese}
+            {names.name2}
+          </p>
+        )}
+        {names.name3 && (
+          <p className="line-clamp-1 w-full text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
+            {names.name3}
           </p>
         )}
         {!hasAnyName && (
@@ -213,7 +214,7 @@ function EmptySeatCell({
   return (
     <div
       className={cn(
-        "flex min-h-[7.5rem] items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/15",
+        "flex min-h-[5.75rem] items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/15 sm:min-h-[7.5rem]",
         isDragOverlay && "border-primary/50 bg-primary/5",
         isDropTarget && "border-primary/60 bg-primary/10 ring-2 ring-primary/25",
         isVacated && "border-primary/30 bg-primary/5"
@@ -231,6 +232,7 @@ function SeatGridCell({
   points,
   attendance,
   onSelect,
+  readOnly = false,
 }: {
   seatIndex: number;
   student: Student | null;
@@ -239,6 +241,7 @@ function SeatGridCell({
   points: number;
   attendance: AttendanceStatus | null;
   onSelect: () => void;
+  readOnly?: boolean;
 }) {
   const dropId = seatDropId(seatIndex);
   const dragId = seatCellId(seatIndex);
@@ -256,7 +259,7 @@ function SeatGridCell({
     transform,
   } = useDraggable({
     id: dragId,
-    disabled: !student,
+    disabled: !student || readOnly,
     data: { seatIndex },
   });
 
@@ -292,11 +295,15 @@ function SeatGridCell({
               points={points}
               attendance={attendance}
               onSelect={onSelect}
-              dragHandle={{
-                ref: setActivatorNodeRef,
-                listeners,
-                attributes,
-              }}
+              dragHandle={
+                readOnly
+                  ? undefined
+                  : {
+                      ref: setActivatorNodeRef,
+                      listeners,
+                      attributes,
+                    }
+              }
               isDragOverlay={isDragging}
               style={
                 isDragging
@@ -322,6 +329,7 @@ export function ClassSeatingGrid({
   onSelectStudent,
   pointsTodayByStudent,
   getAttendanceStatus,
+  readOnly = false,
 }: ClassSeatingGridProps) {
   const updateClass = useAppStore((s) => s.updateClass);
   const enrolledIds = cls.studentIds;
@@ -383,6 +391,7 @@ export function ClassSeatingGrid({
                 points={studentId ? (pointsTodayByStudent.get(studentId) ?? 0) : 0}
                 attendance={studentId ? getAttendanceStatus(studentId) : null}
                 onSelect={() => studentId && onSelectStudent(studentId)}
+                readOnly={readOnly}
               />
             );
           })}
@@ -475,7 +484,7 @@ export function SeatLayoutPicker({ cls }: SeatLayoutPickerProps) {
   };
 
   return (
-    <div className="mb-3 flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/15 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-4">
         <LayoutStepper
           label="Cols"

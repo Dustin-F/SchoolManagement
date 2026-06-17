@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { useAppStore } from "@/store";
 import { getStudentDisplayName } from "@/lib/displayHelpers";
+import { readStudentReturnFrom } from "@/lib/studentNavigation";
 
 export interface BreadcrumbCrumb {
   label: string;
@@ -23,14 +24,15 @@ export function useBreadcrumbCrumbs(): BreadcrumbCrumb[] | null {
   const students = useAppStore((s) => s.students);
 
   const classMatch = useMatch("/classes/:id");
+  const classProfileMatch = useMatch("/classes/:id/profile");
   const studentMatch = useMatch("/students/:id");
 
   return useMemo(() => {
     const basePath = "/" + (location.pathname.split("/")[1] || "");
-    const classId = classMatch?.params.id ?? searchParams.get("classId");
+    const classId = classMatch?.params.id ?? classProfileMatch?.params.id ?? searchParams.get("classId");
     const cls = classId ? classes.find((c) => c.id === classId) : undefined;
 
-    if (classMatch?.params.id && cls) {
+    if ((classMatch?.params.id || classProfileMatch?.params.id) && cls) {
       return [
         { label: "Classes", href: "/classes" },
         { label: cls.name },
@@ -40,6 +42,20 @@ export function useBreadcrumbCrumbs(): BreadcrumbCrumb[] | null {
     if (studentMatch?.params.id) {
       const student = students.find((s) => s.id === studentMatch.params.id);
       if (!student) return null;
+
+      const from = readStudentReturnFrom(location.state, searchParams);
+      const classFromMatch = from?.match(/^\/classes\/([^/?]+)/);
+      if (classFromMatch) {
+        const returnClass = classes.find((c) => c.id === classFromMatch[1]);
+        if (returnClass) {
+          return [
+            { label: "Classes", href: "/classes" },
+            { label: returnClass.name, href: from },
+            { label: getStudentDisplayName(student) },
+          ];
+        }
+      }
+
       return [
         { label: "Students", href: "/students" },
         { label: getStudentDisplayName(student) },
@@ -72,13 +88,13 @@ export function useBreadcrumbCrumbs(): BreadcrumbCrumb[] | null {
     }
 
     return null;
-  }, [location.pathname, searchParams, classMatch, studentMatch, classes, students]);
+  }, [location.pathname, location.state, searchParams, classMatch, classProfileMatch, studentMatch, classes, students]);
 }
 
 export function AppBreadcrumb({ crumbs }: { crumbs: BreadcrumbCrumb[] }) {
 
   return (
-    <Breadcrumb className="max-w-[min(100vw-8rem,42rem)]">
+    <Breadcrumb className="max-w-[min(100vw-7.5rem,42rem)] sm:max-w-[min(100vw-10rem,42rem)]">
       <BreadcrumbList>
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1;

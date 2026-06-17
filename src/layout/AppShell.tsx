@@ -24,7 +24,7 @@ export function AppShell() {
 
       <div className="lg:pl-64">
         <Header onMenuClick={() => setSidebarOpen(true)} />
-        <main className="p-4 lg:p-6">
+        <main className="min-w-0 overflow-x-hidden p-4 lg:p-6">
           <Outlet />
         </main>
       </div>

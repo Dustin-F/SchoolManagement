@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { DayOfWeek, ScheduleEntry } from "@/types";
+import type { DayOfWeek } from "@/types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -47,11 +47,3 @@ export const DAY_SHORT: Record<DayOfWeek, string> = {
 export const DAY_ORDER: DayOfWeek[] = [
   "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
 ];
-
-export function formatScheduleSummary(schedule: ScheduleEntry[]): string {
-  if (schedule.length === 0) return "No schedule";
-  return [...schedule]
-    .sort((a, b) => DAY_ORDER.indexOf(a.dayOfWeek) - DAY_ORDER.indexOf(b.dayOfWeek))
-    .map((s) => `${DAY_SHORT[s.dayOfWeek]} ${s.startTime}–${s.endTime}`)
-    .join(", ");
-}

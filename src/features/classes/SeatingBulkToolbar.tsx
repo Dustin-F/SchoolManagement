@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CheckSquare, Sparkles, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckSquare, ChevronDown, Sparkles, Users } from "lucide-react";
 import type { BehaviourSkill, SchoolClass } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,8 +37,13 @@ export function SeatingBulkToolbar({
   rowCount,
 }: SeatingBulkToolbarProps) {
   const [skillDialogOpen, setSkillDialogOpen] = useState(false);
+  const [rowSelectOpen, setRowSelectOpen] = useState(false);
   const count = selectedIds.size;
   const columns = getSeatColumns(cls);
+
+  useEffect(() => {
+    if (!selectMode) setRowSelectOpen(false);
+  }, [selectMode]);
 
   const handleAwardSkill = (skill: BehaviourSkill) => {
     onAwardSkill([...selectedIds], skill);
@@ -47,7 +52,7 @@ export function SeatingBulkToolbar({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 p-2">
         <Button
           type="button"
           size="sm"
@@ -85,20 +90,37 @@ export function SeatingBulkToolbar({
         )}
 
         {selectMode && rowCount > 0 && (
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] text-muted-foreground">Rows:</span>
-            {Array.from({ length: rowCount }, (_, i) => (
-              <Button
-                key={i}
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-[10px]"
-                onClick={() => onSelectRow(i)}
-              >
-                R{i + 1}
-              </Button>
-            ))}
+          <div className="w-full border-t border-border/60 pt-2">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left hover:bg-muted/40"
+              onClick={() => setRowSelectOpen((v) => !v)}
+              aria-expanded={rowSelectOpen}
+            >
+              <span className="text-[10px] font-medium text-muted-foreground">Select by row</span>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 text-muted-foreground transition-transform",
+                  rowSelectOpen && "rotate-180"
+                )}
+              />
+            </button>
+            {rowSelectOpen && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                {Array.from({ length: rowCount }, (_, i) => (
+                  <Button
+                    key={i}
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-[10px]"
+                    onClick={() => onSelectRow(i)}
+                  >
+                    R{i + 1}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

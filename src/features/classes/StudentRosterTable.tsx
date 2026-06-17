@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import type {
   AttendanceRecord,
   AttendanceStatus,
@@ -7,20 +8,17 @@ import type {
   SchoolClass,
   Student,
   StudentTaskRecord,
-  StudentTaskStatus,
 } from "@/types";
 import { ClassPointsToolbar } from "@/features/points/ClassPointsToolbar";
-import { ClassSeatingGrid, SeatLayoutPicker } from "@/features/classes/ClassSeatingGrid";
+import { ClassSeatingGrid } from "@/features/classes/ClassSeatingGrid";
 import { RosterStudentDetailDialog } from "@/features/classes/RosterStudentDetailDialog";
 import { NeedsAttentionStrip } from "@/features/classes/NeedsAttentionStrip";
-import { SeatingBulkToolbar } from "@/features/classes/SeatingBulkToolbar";
-import { GradebookView } from "@/features/classes/GradebookView";
+import { SeatingControlsPanel } from "@/features/classes/SeatingControlsPanel";
 import {
   RosterAttendanceButtons,
   RosterPointsBadge,
   RosterStudentDetailPanel,
   RosterStudentIdentity,
-  RosterTaskControls,
 } from "@/features/classes/RosterStudentDetailPanel";
 import { Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,8 +36,11 @@ import { getStudentAttentionFlags } from "@/lib/attentionUtils";
 import { getSeatColumns, getSeatRows, resolveSeatGrid } from "@/lib/seatingUtils";
 import { skillsForClassToolbar } from "@/lib/pointsUtils";
 import { cn, getLocalToday } from "@/lib/utils";
+import { classPageReturnTo } from "@/lib/studentNavigation";
 
-type RosterViewMode = "seating" | "list" | "gradebook";
+type RosterViewMode = "seating" | "list";
+
+const rosterViewStorageKey = (classId: string) => `schoolhub-roster-view-${classId}`;
 
 interface StudentRosterTableProps {
   cls: SchoolClass;
@@ -53,12 +54,9 @@ interface StudentRosterTableProps {
   selectedStudentId?: string | null;
   onSelectedStudentChange?: (studentId: string | null) => void;
   onMarkAttendance: (studentId: string, status: AttendanceStatus) => void;
-  onTaskStatusChange: (recordId: string, status: StudentTaskStatus) => void;
-  onTaskScoreBlur: (record: StudentTaskRecord, raw: string) => void;
-  onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
   onAwardSkill?: (studentId: string, skill: BehaviourSkill) => void;
   onAwardSkillBulk?: (studentIds: string[], skill: BehaviourSkill) => void;
-  archivedTaskCount: number;
+  readOnly?: boolean;
 }
 
 export function StudentRosterTable({
@@ -73,16 +71,21 @@ export function StudentRosterTable({
   selectedStudentId: selectedStudentIdProp,
   onSelectedStudentChange,
   onMarkAttendance,
-  onTaskStatusChange,
-  onTaskScoreBlur,
-  onOpenProgress,
   onAwardSkill,
   onAwardSkillBulk,
-  archivedTaskCount,
+  readOnly = false,
 }: StudentRosterTableProps) {
+  const location = useLocation();
+  const classReturnTo = classPageReturnTo(cls.id, location.search);
   const todayStr = todayStrProp ?? getLocalToday();
   const behaviourSkills = useAppStore((s) => s.behaviourSkills);
-  const [viewMode, setViewMode] = useState<RosterViewMode>("seating");
+  const [viewMode, setViewMode] = useState<RosterViewMode>(() => {
+    const saved = localStorage.getItem(rosterViewStorageKey(cls.id));
+    if (saved === "list") return "list";
+    if (saved === "tasks" || saved === "gradebook") return "seating";
+    if (saved === "seating") return "seating";
+    return "seating";
+  });
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(
     students[0]?.id ?? null
   );
@@ -106,21 +109,9 @@ export function StudentRosterTable({
     }
   }, [students, selectedStudentId]);
 
-  const recordByTaskAndStudent = useMemo(() => {
-    const map = new Map<string, StudentTaskRecord>();
-    for (const r of studentTaskRecords) {
-      map.set(`${r.taskId}:${r.studentId}`, r);
-    }
-    return map;
-  }, [studentTaskRecords]);
-
-  const getTaskRecord = (taskId: string, studentId: string) =>
-    recordByTaskAndStudent.get(`${taskId}:${studentId}`);
-
-  const getAttendanceStatus = (studentId: string): AttendanceStatus | null => {
-    const record = dayAttendanceRows.find((a) => a.studentId === studentId);
-    return record ? record.status : null;
-  };
+  useEffect(() => {
+    localStorage.setItem(rosterViewStorageKey(cls.id), viewMode);
+  }, [cls.id, viewMode]);
 
   const attentionFlags = useMemo(
     () =>
@@ -177,28 +168,21 @@ export function StudentRosterTable({
     setBulkSelectedIds(new Set(ids));
   };
 
-  const taskControlProps = {
-    activeTasks,
-    getTaskRecord,
-    archivedTaskCount,
-    todayStr,
-    onTaskStatusChange,
-    onTaskScoreBlur,
-    onOpenProgress,
+  const getAttendanceStatus = (studentId: string): AttendanceStatus | null => {
+    const record = dayAttendanceRows.find((a) => a.studentId === studentId);
+    return record ? record.status : null;
   };
 
   const renderViewToggle = () => (
     <div className="mb-3 flex items-center gap-2">
       <div className="flex flex-1 rounded-lg border border-border bg-muted/30 p-1">
-        {(["seating", "list", "gradebook"] as const).map((mode) => (
+        {(["seating", "list"] as const).map((mode) => (
           <HintTooltip
             key={mode}
             content={
               mode === "seating"
                 ? "Seating plan with drag-and-drop layout."
-                : mode === "list"
-                  ? "List view with points toolbar."
-                  : "Task scores matrix for the class."
+                : "Attendance and points by student."
             }
           >
             <Button
@@ -208,7 +192,7 @@ export function StudentRosterTable({
               className="h-8 flex-1 text-xs capitalize sm:text-sm"
               onClick={() => setViewMode(mode)}
             >
-              {mode === "gradebook" ? "Gradebook" : mode}
+              {mode}
             </Button>
           </HintTooltip>
         ))}
@@ -234,16 +218,14 @@ export function StudentRosterTable({
         onClick={() => setSelectedStudentId(student.id)}
       >
         <TableCell>
-          <RosterStudentIdentity student={student} selected={selected} />
+          <RosterStudentIdentity student={student} selected={selected} returnTo={classReturnTo} />
         </TableCell>
         <TableCell onClick={(e) => e.stopPropagation()}>
           <RosterAttendanceButtons
             current={getAttendanceStatus(student.id)}
             onMark={(status) => onMarkAttendance(student.id, status)}
+            disabled={readOnly}
           />
-        </TableCell>
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          <RosterTaskControls student={student} {...taskControlProps} />
         </TableCell>
         <TableCell className="text-right">
           <RosterPointsBadge pts={pts} />
@@ -276,8 +258,17 @@ export function StudentRosterTable({
           student={student}
           pointsToday={pts}
           attendanceStatus={getAttendanceStatus(student.id)}
+          activeTasks={[]}
+          getTaskRecord={() => undefined}
+          archivedTaskCount={0}
+          todayStr={todayStr}
           onMarkAttendance={(status) => onMarkAttendance(student.id, status)}
-          {...taskControlProps}
+          onTaskStatusChange={() => {}}
+          onTaskScoreUpdate={() => {}}
+          onOpenProgress={() => {}}
+          readOnly={readOnly}
+          showTasks={false}
+          returnTo={classReturnTo}
           className={cn("border-0 shadow-none", selected && "bg-primary/5")}
         />
       </div>
@@ -303,8 +294,8 @@ export function StudentRosterTable({
         <p className="text-sm text-muted-foreground">No students yet. Add someone to start tracking.</p>
       ) : (
         <>
-          {viewMode === "list" && (
-            <div className="sticky top-16 z-20 -mx-6 border-y border-border bg-card/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90">
+          {viewMode === "list" && !readOnly && (
+            <div className="sticky top-16 z-20 -mx-4 border-y border-border bg-card/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90 sm:-mx-6 sm:px-6">
               <ClassPointsToolbar
                 cls={cls}
                 students={students}
@@ -318,31 +309,32 @@ export function StudentRosterTable({
 
           {viewMode === "seating" ? (
             <>
-              <SeatingBulkToolbar
-                cls={cls}
-                selectedIds={bulkSelectedIds}
-                toolbarSkills={toolbarSkills}
-                selectMode={selectMode}
-                onToggleSelectMode={() => {
-                  setSelectMode((v) => {
-                    const next = !v;
-                    if (next) {
-                      setSelectedStudentId(null);
-                      setSeatDialogStudentId(null);
-                    }
-                    return next;
-                  });
-                  setBulkSelectedIds(new Set());
-                }}
-                onMarkPresent={(ids) => ids.forEach((id) => onMarkAttendance(id, "present"))}
-                onAwardSkill={(ids, skill) => {
-                  if (onAwardSkillBulk) onAwardSkillBulk(ids, skill);
-                  else ids.forEach((id) => onAwardSkill?.(id, skill));
-                }}
-                onSelectRow={selectRow}
-                rowCount={rowCount}
-              />
-              <SeatLayoutPicker cls={cls} />
+              {!readOnly && (
+                <SeatingControlsPanel
+                  cls={cls}
+                  selectedIds={bulkSelectedIds}
+                  toolbarSkills={toolbarSkills}
+                  selectMode={selectMode}
+                  rowCount={rowCount}
+                  onToggleSelectMode={() => {
+                    setSelectMode((v) => {
+                      const next = !v;
+                      if (next) {
+                        setSelectedStudentId(null);
+                        setSeatDialogStudentId(null);
+                      }
+                      return next;
+                    });
+                    setBulkSelectedIds(new Set());
+                  }}
+                  onMarkPresent={(ids) => ids.forEach((id) => onMarkAttendance(id, "present"))}
+                  onAwardSkill={(ids, skill) => {
+                    if (onAwardSkillBulk) onAwardSkillBulk(ids, skill);
+                    else ids.forEach((id) => onAwardSkill?.(id, skill));
+                  }}
+                  onSelectRow={selectRow}
+                />
+              )}
               <ClassSeatingGrid
                 cls={cls}
                 students={students}
@@ -351,8 +343,10 @@ export function StudentRosterTable({
                 onSelectStudent={handleSeatCardClick}
                 pointsTodayByStudent={pointsTodayByStudent}
                 getAttendanceStatus={getAttendanceStatus}
+                readOnly={readOnly}
               />
               <RosterStudentDetailDialog
+                returnTo={classReturnTo}
                 open={seatDialogStudentId !== null}
                 onOpenChange={(open) => {
                   if (!open) setSeatDialogStudentId(null);
@@ -372,15 +366,9 @@ export function StudentRosterTable({
                 onMarkAttendance={(status) => {
                   if (seatDialogStudent) onMarkAttendance(seatDialogStudent.id, status);
                 }}
-                {...taskControlProps}
+                readOnly={readOnly}
               />
             </>
-          ) : viewMode === "gradebook" ? (
-            <GradebookView
-              students={students}
-              activeTasks={activeTasks}
-              getTaskRecord={getTaskRecord}
-            />
           ) : (
             <>
               <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
@@ -389,8 +377,7 @@ export function StudentRosterTable({
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="min-w-[180px]">Student</TableHead>
                       <TableHead className="min-w-[120px]">Attendance</TableHead>
-                      <TableHead className="min-w-[280px]">Tasks &amp; grades</TableHead>
-                      <TableHead className="min-w-[72px] text-right">Today</TableHead>
+                      <TableHead className="min-w-[72px] text-right">Points today</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

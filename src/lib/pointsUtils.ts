@@ -1,4 +1,5 @@
 import type { BehaviourSkill, PointEvent, SchoolClass, Student } from "@/types";
+import { getStudentDisplayName } from "@/lib/displayHelpers";
 import { getLocalToday } from "@/lib/utils";
 
 export function getWeekStart(date = new Date()): Date {
@@ -107,7 +108,7 @@ export function buildWeeklyReport(
       const todayEvents = studentEvents.filter((e) => e.date === today);
       rows.push({
         studentId,
-        studentName: `${student.firstName} ${student.lastName}`.trim() || student.chineseName || student.pinyinName || "Student",
+        studentName: getStudentDisplayName(student),
         classId: cls.id,
         className: cls.name,
         weekPoints: sumPoints(studentEvents),

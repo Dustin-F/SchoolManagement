@@ -92,6 +92,14 @@ create table if not exists public.app_student_task_records (
   primary key (user_id, id)
 );
 
+create table if not exists public.app_class_session_notes (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  id text not null,
+  data jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
 alter table public.app_teachers enable row level security;
 alter table public.app_students enable row level security;
 alter table public.app_classes enable row level security;
@@ -101,6 +109,7 @@ alter table public.app_behaviour_skills enable row level security;
 alter table public.app_point_events enable row level security;
 alter table public.app_class_tasks enable row level security;
 alter table public.app_student_task_records enable row level security;
+alter table public.app_class_session_notes enable row level security;
 
 create policy "Users read own app_teachers" on public.app_teachers for select to authenticated using (auth.uid() = user_id);
 create policy "Users write own app_teachers" on public.app_teachers for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -128,6 +137,9 @@ create policy "Users write own app_class_tasks" on public.app_class_tasks for al
 
 create policy "Users read own app_student_task_records" on public.app_student_task_records for select to authenticated using (auth.uid() = user_id);
 create policy "Users write own app_student_task_records" on public.app_student_task_records for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users read own app_class_session_notes" on public.app_class_session_notes for select to authenticated using (auth.uid() = user_id);
+create policy "Users write own app_class_session_notes" on public.app_class_session_notes for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
 ## 3) Auth
@@ -147,7 +159,7 @@ All app data is stored per signed-in user across normalized `app_*` tables.
 
 If the header shows **Sync error (`app_...`)**, it is almost always a Supabase setup issue:
 
-1. **Missing table** — You must create **all 9** tables from section 2 (`app_teachers` through `app_student_task_records`, including `app_behaviour_skills` and `app_point_events`). If you only created `app_data` or a subset, sync will fail on the missing table name shown in the header (hover for full message).
+1. **Missing table** — You must create **all 10** tables from section 2 (`app_teachers` through `app_class_session_notes`, including `app_behaviour_skills` and `app_point_events`). If you only created `app_data` or a subset, sync will fail on the missing table name shown in the header (hover for full message).
 2. **Missing RLS policies** — Re-run the `enable row level security` and `create policy` statements for every table.
 3. **Not signed in** — Data only syncs for authenticated users. Confirm you are logged in.
 4. **Wrong `.env`** — `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` must match your project (Project Settings → API).

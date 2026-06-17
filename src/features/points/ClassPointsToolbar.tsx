@@ -18,6 +18,7 @@ interface ClassPointsToolbarProps {
   selectedStudentId: string | null;
   /** Compact layout for inside the student detail dialog. */
   embedded?: boolean;
+  readOnly?: boolean;
 }
 
 export function ClassPointsToolbar({
@@ -26,6 +27,7 @@ export function ClassPointsToolbar({
   sessionDate,
   selectedStudentId,
   embedded = false,
+  readOnly = false,
 }: ClassPointsToolbarProps) {
   const behaviourSkills = useAppStore((s) => s.behaviourSkills);
   const pointEvents = useAppStore((s) => s.pointEvents);
@@ -50,6 +52,7 @@ export function ClassPointsToolbar({
   const selectedStudent = students.find((s) => s.id === selectedStudentId);
 
   const awardSkill = (skill: BehaviourSkill) => {
+    if (readOnly) return;
     if (!selectedStudentId) {
       toast.info("Select a student in the roster first.");
       return;
@@ -131,7 +134,7 @@ export function ClassPointsToolbar({
                   skillButtonClass(skill)
                 )}
                 onClick={() => awardSkill(skill)}
-                disabled={!selectedStudentId}
+                disabled={readOnly || !selectedStudentId}
               >
                 <span className="text-base leading-none">{skill.emoji ?? "•"}</span>
                 <span className="text-xs font-medium">{skill.name}</span>
@@ -146,7 +149,7 @@ export function ClassPointsToolbar({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             className="max-w-md"
-            disabled={!selectedStudentId}
+            disabled={readOnly || !selectedStudentId}
           />
         </>
       )}

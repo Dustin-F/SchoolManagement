@@ -346,3 +346,34 @@
 .dashboard-calendar .fc .fc-daygrid-event .fc-event-title {
   white-space: normal;
 }
+
+@media (max-width: 640px) {
+  .dashboard-calendar .fc .fc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .dashboard-calendar .fc .fc-toolbar-chunk {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  .dashboard-calendar .fc .fc-toolbar-title {
+    font-size: 1rem;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  .dashboard-calendar .fc .fc-button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .dashboard-calendar .fc .fc-list-event-title,
+  .dashboard-calendar .fc .fc-list-event-time {
+    font-size: 0.8125rem;
+  }
+}

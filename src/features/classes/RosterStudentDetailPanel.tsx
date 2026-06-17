@@ -8,7 +8,6 @@ import type {
   StudentTaskStatus,
 } from "@/types";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -18,11 +17,13 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { getPersonInitials, getStudentDisplayName, getStudentSeatNames } from "@/lib/displayHelpers";
+import { studentProfilePath } from "@/lib/studentNavigation";
 import {
   STUDENT_TASK_STATUS_ORDER,
   studentTaskStatusLabel,
   studentTaskStatusSelectClass,
 } from "@/lib/studentTaskStatus";
+import { TaskScoreInput, type TaskScoreUpdate } from "@/features/tasks/TaskScoreInput";
 import { isTaskOverdue } from "@/lib/taskUtils";
 
 const attendanceStatuses: AttendanceStatus[] = ["present", "absent", "late", "excused"];
@@ -51,10 +52,15 @@ interface RosterStudentDetailPanelProps {
   todayStr: string;
   onMarkAttendance: (status: AttendanceStatus) => void;
   onTaskStatusChange: (recordId: string, status: StudentTaskStatus) => void;
-  onTaskScoreBlur: (record: StudentTaskRecord, raw: string) => void;
+  onTaskScoreUpdate: (record: StudentTaskRecord, update: TaskScoreUpdate) => void;
   onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
-  /** Show english / pinyin / chinese lines like seating cards. */
+  readOnly?: boolean;
+  /** When false, hide per-student task controls (use Tasks tab matrix instead). */
+  showTasks?: boolean;
+  /** Show primary / phonetic / native lines like seating cards. */
   showSeatNames?: boolean;
+  /** When set, profile links return here (e.g. class page). */
+  returnTo?: string;
   variant?: "panel" | "dialog";
   className?: string;
 }
@@ -79,9 +85,11 @@ function PointsBadge({ pts, className }: { pts: number; className?: string }) {
 function StudentIdentity({
   student,
   showSeatNames,
+  returnTo,
 }: {
   student: Student;
   showSeatNames?: boolean;
+  returnTo?: string;
 }) {
   const seatNames = getStudentSeatNames(student);
 
@@ -92,25 +100,29 @@ function StudentIdentity({
           {getPersonInitials(student)}
         </span>
         <div className="min-w-0 space-y-0.5">
-          {seatNames.english ? (
+          {seatNames.name1 ? (
             <Link
-              to={`/students/${student.id}`}
+              to={studentProfilePath(student.id, returnTo)}
+              onClick={(e) => e.stopPropagation()}
               className="block text-sm font-semibold text-foreground hover:text-primary"
             >
-              {seatNames.english}
+              {seatNames.name1}
             </Link>
           ) : (
             <Link
-              to={`/students/${student.id}`}
+              to={studentProfilePath(student.id, returnTo)}
+              onClick={(e) => e.stopPropagation()}
               className="block text-sm font-semibold text-foreground hover:text-primary"
             >
               {getStudentDisplayName(student)}
             </Link>
           )}
-          {seatNames.pinyin && (
-            <p className="text-xs text-muted-foreground">{seatNames.pinyin}</p>
+          {seatNames.name2 && (
+            <p className="text-xs text-foreground">{seatNames.name2}</p>
           )}
-          {seatNames.chinese && <p className="text-xs text-foreground">{seatNames.chinese}</p>}
+          {seatNames.name3 && (
+            <p className="text-xs text-muted-foreground">{seatNames.name3}</p>
+          )}
           {student.parentPhone && (
             <p className="text-xs text-muted-foreground">{student.parentPhone}</p>
           )}
@@ -126,7 +138,8 @@ function StudentIdentity({
       </span>
       <div className="min-w-0">
         <Link
-          to={`/students/${student.id}`}
+          to={studentProfilePath(student.id, returnTo)}
+          onClick={(e) => e.stopPropagation()}
           className="font-semibold text-foreground hover:text-primary truncate block"
         >
           {getStudentDisplayName(student)}
@@ -142,12 +155,14 @@ function StudentIdentity({
 function AttendanceButtons({
   current,
   onMark,
+  disabled = false,
 }: {
   current: AttendanceStatus | null;
   onMark: (status: AttendanceStatus) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className={cn("flex flex-wrap gap-1", disabled && "pointer-events-none opacity-60")}>
       {attendanceStatuses.map((status) => {
         const Icon = AttendanceIcon[status];
         const active = current === status;
@@ -156,6 +171,7 @@ function AttendanceButtons({
             key={status}
             type="button"
             title={status}
+            disabled={disabled}
             onClick={() => onMark(status)}
             className={cn(
               "flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-xs font-semibold transition-all",
@@ -179,8 +195,9 @@ function TaskControls({
   archivedTaskCount,
   todayStr,
   onTaskStatusChange,
-  onTaskScoreBlur,
+  onTaskScoreUpdate,
   onOpenProgress,
+  readOnly = false,
 }: {
   student: Student;
   activeTasks: ClassTask[];
@@ -188,15 +205,16 @@ function TaskControls({
   archivedTaskCount: number;
   todayStr: string;
   onTaskStatusChange: (recordId: string, status: StudentTaskStatus) => void;
-  onTaskScoreBlur: (record: StudentTaskRecord, raw: string) => void;
+  onTaskScoreUpdate: (record: StudentTaskRecord, update: TaskScoreUpdate) => void;
   onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
+  readOnly?: boolean;
 }) {
   if (activeTasks.length === 0) {
     return (
       <span className="text-xs text-muted-foreground">
         {archivedTaskCount > 0
-          ? "All tasks are archived. Expand “Archived tasks” below to restore."
-          : "Add tasks in the section below."}
+          ? "All tasks are archived — open the Tasks tab to restore them."
+          : "No active tasks — open the Tasks tab to add assignments."}
       </span>
     );
   }
@@ -227,45 +245,50 @@ function TaskControls({
               </p>
             </div>
 
-            <Select
-              value={rec.status}
-              onValueChange={(v) => onTaskStatusChange(rec.id, v as StudentTaskStatus)}
-            >
-              <SelectTrigger
-                className={cn("h-8 w-37 shrink-0 text-xs", studentTaskStatusSelectClass(rec.status))}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STUDENT_TASK_STATUS_ORDER.map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs">
-                    {studentTaskStatusLabel[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {readOnly ? (
+              <span className="text-xs text-muted-foreground">
+                {studentTaskStatusLabel[rec.status]}
+                {rec.score != null ? ` · ${rec.score}` : ""}
+              </span>
+            ) : (
+              <>
+                <Select
+                  value={rec.status}
+                  onValueChange={(v) => onTaskStatusChange(rec.id, v as StudentTaskStatus)}
+                >
+                  <SelectTrigger
+                    className={cn("h-8 w-37 shrink-0 text-xs", studentTaskStatusSelectClass(rec.status))}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STUDENT_TASK_STATUS_ORDER.map((s) => (
+                      <SelectItem key={s} value={s} className="text-xs">
+                        {studentTaskStatusLabel[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-            <Input
-              key={`${rec.id}-${rec.updatedAt}`}
-              type="number"
-              step={0.5}
-              placeholder="Pts"
-              className="h-8 w-16 text-xs"
-              defaultValue={rec.score != null ? String(rec.score) : ""}
-              title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
-              onBlur={(e) => onTaskScoreBlur(rec, e.target.value)}
-            />
+                <TaskScoreInput
+                  task={task}
+                  record={rec}
+                  compact
+                  onScoreUpdate={onTaskScoreUpdate}
+                />
 
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 shrink-0"
-              title="Feedback, submitted date, full edit"
-              onClick={() => onOpenProgress(rec, task)}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 shrink-0"
+                  title="Feedback, submitted date, full edit"
+                  onClick={() => onOpenProgress(rec, task)}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </>
+            )}
           </div>
         );
       })}
@@ -283,9 +306,12 @@ export function RosterStudentDetailPanel({
   todayStr,
   onMarkAttendance,
   onTaskStatusChange,
-  onTaskScoreBlur,
+  onTaskScoreUpdate,
   onOpenProgress,
+  readOnly = false,
+  showTasks = true,
   showSeatNames,
+  returnTo,
   variant = "panel",
   className,
 }: RosterStudentDetailPanelProps) {
@@ -297,7 +323,7 @@ export function RosterStudentDetailPanel({
       )}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <StudentIdentity student={student} showSeatNames={showSeatNames} />
+        <StudentIdentity student={student} showSeatNames={showSeatNames} returnTo={returnTo} />
         <div className="flex items-center gap-2 sm:flex-col sm:items-end">
           <span className="text-xs text-muted-foreground">Points today</span>
           <PointsBadge pts={pointsToday} className="rounded-md border border-border px-2 py-1" />
@@ -307,28 +333,35 @@ export function RosterStudentDetailPanel({
       <div
         className={cn(
           "mt-4 grid gap-4",
-          variant === "panel" ? "md:grid-cols-2" : "grid-cols-1"
+          showTasks && variant === "panel" ? "md:grid-cols-2" : "grid-cols-1"
         )}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Attendance</p>
-          <AttendanceButtons current={attendanceStatus} onMark={onMarkAttendance} />
-        </div>
-        <div className="space-y-1.5 md:col-span-1">
-          <p className="text-xs font-medium text-muted-foreground">Tasks &amp; grades</p>
-          <TaskControls
-            student={student}
-            activeTasks={activeTasks}
-            getTaskRecord={getTaskRecord}
-            archivedTaskCount={archivedTaskCount}
-            todayStr={todayStr}
-            onTaskStatusChange={onTaskStatusChange}
-            onTaskScoreBlur={onTaskScoreBlur}
-            onOpenProgress={onOpenProgress}
+          <AttendanceButtons
+            current={attendanceStatus}
+            onMark={onMarkAttendance}
+            disabled={readOnly}
           />
         </div>
+        {showTasks ? (
+          <div className="space-y-1.5 md:col-span-1">
+            <p className="text-xs font-medium text-muted-foreground">Tasks &amp; grades</p>
+            <TaskControls
+              student={student}
+              activeTasks={activeTasks}
+              getTaskRecord={getTaskRecord}
+              archivedTaskCount={archivedTaskCount}
+              todayStr={todayStr}
+              onTaskStatusChange={onTaskStatusChange}
+              onTaskScoreUpdate={onTaskScoreUpdate}
+              onOpenProgress={onOpenProgress}
+              readOnly={readOnly}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -338,9 +371,11 @@ export function RosterStudentDetailPanel({
 export function RosterStudentIdentity({
   student,
   selected,
+  returnTo,
 }: {
   student: Student;
   selected: boolean;
+  returnTo?: string;
 }) {
   return (
     <div className="flex items-center gap-3 min-w-0">
@@ -354,7 +389,7 @@ export function RosterStudentIdentity({
       </span>
       <div className="min-w-0">
         <Link
-          to={`/students/${student.id}`}
+          to={studentProfilePath(student.id, returnTo)}
           className="font-semibold text-foreground hover:text-primary truncate block"
           onClick={(e) => e.stopPropagation()}
         >
@@ -371,24 +406,13 @@ export function RosterStudentIdentity({
 export function RosterAttendanceButtons({
   current,
   onMark,
+  disabled = false,
 }: {
   current: AttendanceStatus | null;
   onMark: (status: AttendanceStatus) => void;
+  disabled?: boolean;
 }) {
-  return <AttendanceButtons current={current} onMark={onMark} />;
-}
-
-export function RosterTaskControls(props: {
-  student: Student;
-  activeTasks: ClassTask[];
-  getTaskRecord: (taskId: string, studentId: string) => StudentTaskRecord | undefined;
-  archivedTaskCount: number;
-  todayStr: string;
-  onTaskStatusChange: (recordId: string, status: StudentTaskStatus) => void;
-  onTaskScoreBlur: (record: StudentTaskRecord, raw: string) => void;
-  onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
-}) {
-  return <TaskControls {...props} />;
+  return <AttendanceButtons current={current} onMark={onMark} disabled={disabled} />;
 }
 
 export function RosterPointsBadge({ pts, className }: { pts: number; className?: string }) {

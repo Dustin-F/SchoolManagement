@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TeacherFormDialog } from "@/features/teachers/TeacherFormDialog";
 import { useAppStore } from "@/store";
-import { getPersonInitials, getTeacherDisplayName } from "@/lib/displayHelpers";
+import { getPersonInitials, getExtraNameLine, getTeacherDisplayName } from "@/lib/displayHelpers";
+import { getPersonNameLines } from "@/lib/personNames";
 import type { Teacher } from "@/types";
 
 export function TeachersPage() {
@@ -34,7 +35,7 @@ export function TeachersPage() {
   const filtered = useMemo(() => {
     if (search === "") return teachers;
     return teachers.filter((t) =>
-      `${getTeacherDisplayName(t)} ${t.chineseName ?? ""} ${t.pinyinName ?? ""} ${t.email ?? ""}`
+      `${getTeacherDisplayName(t)} ${getPersonNameLines(t).join(" ")} ${t.email ?? ""}`
         .toLowerCase()
         .includes(search.toLowerCase())
     );
@@ -122,11 +123,9 @@ export function TeachersPage() {
                             <h3 className="font-semibold text-foreground">
                               {getTeacherDisplayName(teacher)}
                             </h3>
-                            {(teacher.chineseName || teacher.pinyinName) && (
+                            {getExtraNameLine(teacher) && (
                               <p className="text-xs text-muted-foreground">
-                                {teacher.chineseName ? `中文: ${teacher.chineseName}` : ""}
-                                {teacher.chineseName && teacher.pinyinName ? " · " : ""}
-                                {teacher.pinyinName ? `Pinyin: ${teacher.pinyinName}` : ""}
+                                {getExtraNameLine(teacher)}
                               </p>
                             )}
                             {teacher.email && <p className="text-sm text-muted-foreground">{teacher.email}</p>}
@@ -176,8 +175,18 @@ export function TeachersPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Teacher</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove {deleteTarget ? getTeacherDisplayName(deleteTarget) : "this teacher"}? This cannot be undone.
+            <AlertDialogDescription className="space-y-2">
+              <span>
+                Are you sure you want to remove {deleteTarget ? getTeacherDisplayName(deleteTarget) : "this teacher"}? This cannot be undone.
+              </span>
+              {deleteTarget && getTeacherClasses(deleteTarget.id).length > 0 && (
+                <span className="block text-amber-700 dark:text-amber-300">
+                  Assigned to {getTeacherClasses(deleteTarget.id).length} class
+                  {getTeacherClasses(deleteTarget.id).length !== 1 ? "es" : ""}:{" "}
+                  {getTeacherClasses(deleteTarget.id).map((c) => c.name).join(", ")}. Classes will remain but need a
+                  new teacher.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
