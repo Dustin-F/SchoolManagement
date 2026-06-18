@@ -244,10 +244,17 @@ export interface TermGrade extends BaseEntity {
   termId: string;
   /** Auto-calculated from weighted summative tasks. */
   calculatedPercent: number | null;
+  /** Auto-derived from calculatedPercent and the school letter scale. */
+  calculatedLetter?: string | null;
   /** Teacher-submitted mark for reports (may override calculated). */
   submittedPercent: number | null;
   submittedLetter?: string | null;
   comment?: string;
+}
+
+/** School-wide grading configuration (singleton). */
+export interface SchoolGradingSettings extends BaseEntity {
+  termLetterBands: LetterGradeBand[];
 }
 
 /** Lesson plan / session notes for one class on one calendar day. */
@@ -302,4 +309,5 @@ export interface AppData {
   academicTerms: AcademicTerm[];
   taskAssessmentCategories: TaskAssessmentCategory[];
   termGrades: TermGrade[];
+  schoolGradingSettings: SchoolGradingSettings[];
 }

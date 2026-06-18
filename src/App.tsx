@@ -5,7 +5,6 @@ import { AppShell } from "@/layout/AppShell";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ClassesPage } from "@/pages/ClassesPage";
 import { ClassDetailPage } from "@/pages/ClassDetailPage";
-import { ClassProfilePage } from "@/pages/ClassProfilePage";
 import { StudentsPage } from "@/pages/StudentsPage";
 import { TeachersPage } from "@/pages/TeachersPage";
 import { SubjectsPage } from "@/pages/SubjectsPage";
@@ -99,7 +98,7 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route index element={<DashboardPage />} />
           <Route path="classes" element={<ClassesPage />} />
-          <Route path="classes/:id/profile" element={<ClassProfilePage />} />
+          <Route path="classes/:id/profile" element={<Navigate to=".." replace relative="path" />} />
           <Route path="classes/:classId/tasks/:taskId/grade" element={<TaskGradePage />} />
           <Route path="classes/:classId/tasks/:taskId" element={<TaskEditPage />} />
           <Route path="classes/:id" element={<ClassDetailPage />} />

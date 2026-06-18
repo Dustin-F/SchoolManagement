@@ -8,10 +8,24 @@ import type {
 } from "@/types";
 import {
   buildTermGradeRows,
+  getTermLetterBands,
   mergeTermGrades,
 } from "@/lib/termGradeUtils";
 
+import { DEFAULT_LETTER_GRADES, sortLetterGrades } from "@/lib/taskScoringUtils";
+import { DEFAULT_SCHOOL_GRADING_SETTINGS_ID } from "@/lib/termGradeUtils";
+import type { SchoolGradingSettings } from "@/types";
+
 const SEED_TIME = "2026-05-28T08:00:00.000Z";
+
+export const seedSchoolGradingSettings: SchoolGradingSettings[] = [
+  {
+    id: DEFAULT_SCHOOL_GRADING_SETTINGS_ID,
+    termLetterBands: sortLetterGrades(DEFAULT_LETTER_GRADES),
+    createdAt: SEED_TIME,
+    updatedAt: SEED_TIME,
+  },
+];
 
 function ent<T extends { id: string; createdAt: string; updatedAt: string }>(
   id: string,
@@ -101,6 +115,7 @@ export function buildSeedTermGrades(
   records: StudentTaskRecord[],
   categories: TaskAssessmentCategory[]
 ): TermGrade[] {
+  const termLetterBands = getTermLetterBands(seedSchoolGradingSettings);
   let grades: TermGrade[] = [];
 
   for (const cls of classes) {
@@ -113,7 +128,8 @@ export function buildSeedTermGrades(
         tasks,
         records,
         categories,
-        grades
+        grades,
+        termLetterBands
       );
       grades = mergeTermGrades(grades, rows);
     }

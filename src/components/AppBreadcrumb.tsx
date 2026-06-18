@@ -24,15 +24,14 @@ export function useBreadcrumbCrumbs(): BreadcrumbCrumb[] | null {
   const students = useAppStore((s) => s.students);
 
   const classMatch = useMatch("/classes/:id");
-  const classProfileMatch = useMatch("/classes/:id/profile");
   const studentMatch = useMatch("/students/:id");
 
   return useMemo(() => {
     const basePath = "/" + (location.pathname.split("/")[1] || "");
-    const classId = classMatch?.params.id ?? classProfileMatch?.params.id ?? searchParams.get("classId");
+    const classId = classMatch?.params.id ?? searchParams.get("classId");
     const cls = classId ? classes.find((c) => c.id === classId) : undefined;
 
-    if ((classMatch?.params.id || classProfileMatch?.params.id) && cls) {
+    if (classMatch?.params.id && cls) {
       return [
         { label: "Classes", href: "/classes" },
         { label: cls.name },
@@ -88,7 +87,7 @@ export function useBreadcrumbCrumbs(): BreadcrumbCrumb[] | null {
     }
 
     return null;
-  }, [location.pathname, location.state, searchParams, classMatch, classProfileMatch, studentMatch, classes, students]);
+  }, [location.pathname, location.state, searchParams, classMatch, studentMatch, classes, students]);
 }
 
 export function AppBreadcrumb({ crumbs }: { crumbs: BreadcrumbCrumb[] }) {

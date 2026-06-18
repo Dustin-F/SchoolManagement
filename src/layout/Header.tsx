@@ -170,6 +170,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       academicTerms: s.academicTerms,
       taskAssessmentCategories: s.taskAssessmentCategories,
       termGrades: s.termGrades,
+      schoolGradingSettings: s.schoolGradingSettings,
     });
     toast.success("Backup downloaded.");
   };

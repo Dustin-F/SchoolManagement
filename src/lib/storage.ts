@@ -19,6 +19,7 @@ const TABLE_BY_KEY: Record<StorageKey, string> = {
   academicTerms: "app_academic_terms",
   taskAssessmentCategories: "app_task_assessment_categories",
   termGrades: "app_term_grades",
+  schoolGradingSettings: "app_school_grading_settings",
 };
 
 let currentUserId: string | null = null;
@@ -58,6 +59,7 @@ const TABLE_LABELS: Record<string, string> = {
   app_academic_terms: "Academic terms",
   app_task_assessment_categories: "Assessment categories",
   app_term_grades: "Term grades",
+  app_school_grading_settings: "Grading settings",
   config: "Environment (.env)",
 };
 

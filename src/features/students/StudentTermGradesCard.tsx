@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getActiveTerm, termLabel } from "@/lib/assessmentUtils";
-import { computeSchoolYearPercent, effectiveTermPercent } from "@/lib/termGradeUtils";
+import { computeSchoolYearPercent, effectiveTermLetter, effectiveTermPercent } from "@/lib/termGradeUtils";
 import { useAppStore } from "@/store";
 import type { SchoolClass } from "@/types";
 
@@ -98,6 +98,7 @@ export function StudentTermGradesCard({ studentId, enrolledClasses }: StudentTer
                 <TableBody>
                   {rows.map(({ cls, grade, yearAvg }) => {
                     const effective = grade ? effectiveTermPercent(grade) : null;
+                    const letter = grade ? effectiveTermLetter(grade) : null;
                     return (
                       <TableRow key={cls.id}>
                         <TableCell>
@@ -109,7 +110,18 @@ export function StudentTermGradesCard({ studentId, enrolledClasses }: StudentTer
                           </Link>
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">
-                          {grade?.calculatedPercent != null ? `${grade.calculatedPercent}%` : "—"}
+                          {grade?.calculatedPercent != null ? (
+                            <>
+                              {grade.calculatedPercent}%
+                              {grade.calculatedLetter && (
+                                <span className="ml-1 text-xs text-muted-foreground">
+                                  ({grade.calculatedLetter})
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            "—"
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold tabular-nums">
                           {grade?.submittedPercent != null ? (
@@ -119,9 +131,9 @@ export function StudentTermGradesCard({ studentId, enrolledClasses }: StudentTer
                           ) : (
                             "—"
                           )}
-                          {grade?.submittedLetter && (
+                          {letter && (
                             <Badge variant="outline" className="ml-1.5 text-[10px] font-normal">
-                              {grade.submittedLetter}
+                              {letter}
                             </Badge>
                           )}
                         </TableCell>
