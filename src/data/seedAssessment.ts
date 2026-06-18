@@ -8,12 +8,11 @@ import type {
 } from "@/types";
 import {
   buildTermGradeRows,
-  getTermLetterBands,
   mergeTermGrades,
 } from "@/lib/termGradeUtils";
 
-import { DEFAULT_LETTER_GRADES, sortLetterGrades } from "@/lib/taskScoringUtils";
-import { DEFAULT_SCHOOL_GRADING_SETTINGS_ID } from "@/lib/termGradeUtils";
+import { DEFAULT_LETTER_GRADES, letterForPercent, sortLetterGrades } from "@/lib/taskScoringUtils";
+import { DEFAULT_SCHOOL_GRADING_SETTINGS_ID } from "@/lib/gradingPolicy";
 import type { SchoolGradingSettings } from "@/types";
 
 const SEED_TIME = "2026-05-28T08:00:00.000Z";
@@ -22,6 +21,7 @@ export const seedSchoolGradingSettings: SchoolGradingSettings[] = [
   {
     id: DEFAULT_SCHOOL_GRADING_SETTINGS_ID,
     termLetterBands: sortLetterGrades(DEFAULT_LETTER_GRADES),
+    missingPolicy: "count_as_zero",
     createdAt: SEED_TIME,
     updatedAt: SEED_TIME,
   },
@@ -97,16 +97,31 @@ const TYPE_CATEGORY: Record<ClassTask["type"], string> = {
 
 const FORMATIVE_TYPES = new Set<ClassTask["type"]>(["homework", "worksheet"]);
 
-/** Attach term, role, and category to seeded tasks. */
+/** Task ids that stay formative even when type would be summative. */
+const FORMATIVE_TASK_IDS = new Set([
+  "task-9a-hw1",
+  "task-9b-reading",
+  "task-10a-hw1",
+  "task-10b-hw1",
+]);
+
+/** Attach term, role, category, and publish defaults to seeded tasks. */
 export function enrichSeedClassTasks(tasks: ClassTask[]): ClassTask[] {
-  return tasks.map((t) => ({
-    ...t,
-    termId: t.archived ? SEED_TERM_S2 : SEED_TERM_S1,
-    categoryId: TYPE_CATEGORY[t.type] ?? SEED_CAT_HOMEWORK,
-    assessmentRole: FORMATIVE_TYPES.has(t.type) && t.id.includes("hw")
+  return tasks.map((t) => {
+    const termId = t.archived ? SEED_TERM_S2 : SEED_TERM_S1;
+    const assessmentRole = FORMATIVE_TASK_IDS.has(t.id)
       ? "formative"
-      : "summative",
-  }));
+      : FORMATIVE_TYPES.has(t.type) && t.id.includes("hw")
+        ? "formative"
+        : "summative";
+    return {
+      ...t,
+      termId,
+      categoryId: TYPE_CATEGORY[t.type] ?? SEED_CAT_HOMEWORK,
+      assessmentRole,
+      publishedAt: t.publishedToStudents ? t.publishedAt ?? SEED_TIME : undefined,
+    };
+  });
 }
 
 export function buildSeedTermGrades(
@@ -115,7 +130,6 @@ export function buildSeedTermGrades(
   records: StudentTaskRecord[],
   categories: TaskAssessmentCategory[]
 ): TermGrade[] {
-  const termLetterBands = getTermLetterBands(seedSchoolGradingSettings);
   let grades: TermGrade[] = [];
 
   for (const cls of classes) {
@@ -129,25 +143,48 @@ export function buildSeedTermGrades(
         records,
         categories,
         grades,
-        termLetterBands
+        seedSchoolGradingSettings
       );
       grades = mergeTermGrades(grades, rows);
     }
   }
 
-  // Demo: a few submitted overrides on Sem 1 for 9A math
+  const bands = sortLetterGrades(DEFAULT_LETTER_GRADES);
+  const comments = [
+    "Strong effort and participation this term.",
+    "Good progress — keep revising for exams.",
+    "Excellent collaboration in group work.",
+    "Needs to submit missing work on time.",
+    "Outstanding analytical writing.",
+  ];
+
   return grades.map((g) => {
-    if (g.classId !== "cls-9a-math" || g.termId !== SEED_TERM_S1) return g;
+    if (g.termId !== SEED_TERM_S1) return g;
     const n = parseInt(g.studentId.replace(/\D/g, ""), 10);
-    if (Number.isNaN(n)) return g;
-    if (n % 7 === 0 && g.calculatedPercent != null) {
-      return {
-        ...g,
-        submittedPercent: Math.min(100, g.calculatedPercent + 2),
-        submittedLetter: g.calculatedPercent >= 90 ? "A" : g.calculatedPercent >= 80 ? "B" : "C",
-        comment: "Strong improvement this term.",
-      };
-    }
-    return g;
+    if (Number.isNaN(n) || g.calculatedPercent == null) return g;
+
+    const shouldPost =
+      g.classId === "cls-9a-math" ||
+      (g.classId === "cls-9b-eng" && n % 2 === 0);
+
+    if (!shouldPost) return g;
+
+    const postedPercent = Math.min(100, Math.round(g.calculatedPercent));
+    const postedLetter =
+      letterForPercent(postedPercent, bands) ?? g.calculatedLetter ?? null;
+
+    return {
+      ...g,
+      postedPercent,
+      postedLetter,
+      postStatus: "posted" as const,
+      postedAt: SEED_TIME,
+      comment:
+        g.classId === "cls-9a-math" && n % 5 === 0
+          ? comments[(n / 5) % comments.length]
+          : g.classId === "cls-9b-eng" && n % 3 === 0
+            ? comments[n % comments.length]
+            : g.comment,
+    };
   });
 }

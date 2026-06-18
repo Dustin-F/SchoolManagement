@@ -182,6 +182,7 @@ export const classTaskSchema = z.object({
   assessmentRole: z.enum(["formative", "summative"]),
   termId: z.string().min(1, "Term is required"),
   categoryId: z.string().min(1, "Category is required"),
+  unitId: z.string().optional(),
 });
 export type ClassTaskFormData = z.infer<typeof classTaskSchema>;
 
@@ -203,8 +204,22 @@ export const taskAssessmentCategorySchema = z.object({
 });
 export type TaskAssessmentCategoryFormData = z.infer<typeof taskAssessmentCategorySchema>;
 
+export const classUnitSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  inquiry: z.string().optional(),
+  curriculumNotes: z.string().optional(),
+  startDate: z.string().min(1, "Start date is required"),
+  endDate: z.string().optional(),
+  durationWeeks: z.number().int().min(1).max(52).optional(),
+  termId: z.string().optional(),
+  sortOrder: z.number().int().min(0),
+  status: z.enum(["planned", "in_progress", "completed"]).optional(),
+});
+export type ClassUnitFormData = z.infer<typeof classUnitSchema>;
+
 export const studentTaskRecordUpdateSchema = z.object({
-  status: z.enum(["not_started", "in_progress", "completed", "missing"]),
+  status: z.enum(["not_started", "in_progress", "completed", "missing", "excused"]),
   feedback: z.string().optional(),
   submittedAt: z.string().optional(),
 });

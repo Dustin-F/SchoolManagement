@@ -13,6 +13,7 @@ import { PointsPage } from "@/pages/PointsPage";
 import { MissingWorkPage } from "@/pages/MissingWorkPage";
 import { Navigate } from "react-router-dom";
 import { StudentDetailPage } from "@/pages/StudentDetailPage";
+import { ReportCardPage } from "@/pages/ReportCardPage";
 import { TaskEditPage } from "@/pages/TaskEditPage";
 import { TaskGradePage } from "@/pages/TaskGradePage";
 import { AssessmentSettingsPage } from "@/pages/AssessmentSettingsPage";
@@ -20,6 +21,7 @@ import { AuthPage } from "@/pages/AuthPage";
 import { supabase } from "@/lib/supabase";
 import { clearCloudUser, initializeCloudForUser } from "@/lib/storage";
 import { useAppStore } from "@/store";
+import { UserGuidePage } from "@/pages/UserGuidePage";
 import { LoadingScreen } from "@/components/LoadingScreen";
 
 const THEME_STORAGE_KEY = "schoolhub-theme";
@@ -104,12 +106,14 @@ export default function App() {
           <Route path="classes/:id" element={<ClassDetailPage />} />
           <Route path="students" element={<StudentsPage />} />
           <Route path="students/:id" element={<StudentDetailPage />} />
+          <Route path="students/:id/report-card" element={<ReportCardPage />} />
           <Route path="teachers" element={<TeachersPage />} />
           <Route path="subjects" element={<SubjectsPage />} />
           <Route path="attendance" element={<AttendancePage />} />
           <Route path="points" element={<PointsPage />} />
           <Route path="missing-work" element={<MissingWorkPage />} />
           <Route path="settings/assessment" element={<AssessmentSettingsPage />} />
+          <Route path="guide" element={<UserGuidePage />} />
           <Route path="behaviour" element={<Navigate to="/points" replace />} />
         </Route>
       </Routes>

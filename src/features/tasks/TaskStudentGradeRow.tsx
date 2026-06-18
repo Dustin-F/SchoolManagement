@@ -26,6 +26,7 @@ function statusRowTint(status: StudentTaskStatus): string {
     not_started: "",
     in_progress: "bg-amber-500/5",
     missing: "bg-red-500/8",
+    excused: "bg-violet-500/8",
   };
   return map[status];
 }

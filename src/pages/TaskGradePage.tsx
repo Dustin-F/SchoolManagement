@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Pencil } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export function TaskGradePage() {
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
   const updateStudentTaskRecord = useAppStore((s) => s.updateStudentTaskRecord);
+  const setTaskPublished = useAppStore((s) => s.setTaskPublished);
 
   const [progressRecord, setProgressRecord] = useState<StudentTaskRecord | null>(null);
   const [progressStudentName, setProgressStudentName] = useState("");
@@ -125,12 +127,36 @@ export function TaskGradePage() {
         description={`Due ${formatDate(task.deadline)}${progressLabel ? ` · ${progressLabel}` : ""}`}
         actions={
           !readOnly && (
-            <Button size="sm" variant="outline" asChild>
-              <Link to={`/classes/${cls.id}/tasks/${task.id}`}>
-                <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                Edit task
-              </Link>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={task.publishedToStudents ? "secondary" : "outline"}
+                onClick={() => {
+                  const next = !task.publishedToStudents;
+                  setTaskPublished(task.id, next);
+                  toast.success(next ? "Published to students." : "Hidden from students.");
+                }}
+              >
+                {task.publishedToStudents ? (
+                  <>
+                    <EyeOff className="mr-1.5 h-3.5 w-3.5" />
+                    Unpublish
+                  </>
+                ) : (
+                  <>
+                    <Eye className="mr-1.5 h-3.5 w-3.5" />
+                    Publish to students
+                  </>
+                )}
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <Link to={`/classes/${cls.id}/tasks/${task.id}`}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                  Edit task
+                </Link>
+              </Button>
+            </div>
           )
         }
       />

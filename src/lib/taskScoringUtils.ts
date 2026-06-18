@@ -138,10 +138,20 @@ export function parseNumericScore(task: ClassTask, raw: string): number | null {
   if (trimmed === "") return null;
   const value = Number(trimmed);
   if (!Number.isFinite(value)) return null;
-  if (resolveScoreMode(task) === "percentage") {
-    return Math.min(100, Math.max(0, value));
+  const max = taskMaxScore(task);
+  if (max != null) {
+    return Math.min(max, Math.max(0, value));
   }
-  return value;
+  return Math.max(0, value);
+}
+
+/** Visible scale hint beside score inputs, e.g. "/ 20" or "%". */
+export function scoreInputScaleLabel(task: ClassTask): string {
+  const mode = resolveScoreMode(task);
+  if (mode === "percentage") return "%";
+  const max = task.maxScore;
+  if (max != null) return `/ ${max}`;
+  return "";
 }
 
 export function effectivePercent(task: ClassTask, record: StudentTaskRecord): number | null {

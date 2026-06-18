@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Lock, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TermFilterSelect } from "@/features/assessment/TermFilterSelect";
 import { AssessmentWeightWarning } from "@/features/assessment/AssessmentWeightWarning";
@@ -14,7 +15,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getActiveTerm, termLabel } from "@/lib/assessmentUtils";
-import { computeSchoolYearPercent, effectiveTermLetter, effectiveTermPercent } from "@/lib/termGradeUtils";
+import {
+  computeSchoolYearPercent,
+  displayTermLetter,
+  displayTermPercent,
+  getTermLetterBands,
+  isTermGradePosted,
+  normalizeTermGrade,
+  runningTermPercent,
+} from "@/lib/termGradeUtils";
 import { useAppStore } from "@/store";
 import type { SchoolClass } from "@/types";
 
@@ -27,8 +36,13 @@ export function StudentTermGradesCard({ studentId, enrolledClasses }: StudentTer
   const academicTerms = useAppStore((s) => s.academicTerms);
   const termGrades = useAppStore((s) => s.termGrades);
   const taskAssessmentCategories = useAppStore((s) => s.taskAssessmentCategories);
+  const schoolGradingSettings = useAppStore((s) => s.schoolGradingSettings);
 
   const [termId, setTermId] = useState(() => getActiveTerm(academicTerms)?.id ?? "all");
+  const termLetterBands = useMemo(
+    () => getTermLetterBands(schoolGradingSettings),
+    [schoolGradingSettings]
+  );
 
   const activeTerm = getActiveTerm(academicTerms);
   const selectedTermId = termId === "all" ? activeTerm?.id : termId;
@@ -43,9 +57,10 @@ export function StudentTermGradesCard({ studentId, enrolledClasses }: StudentTer
   const rows = useMemo(() => {
     if (!selectedTermId) return [];
     return enrolledClasses.map((cls) => {
-      const grade = termGrades.find(
+      const raw = termGrades.find(
         (g) => g.studentId === studentId && g.classId === cls.id && g.termId === selectedTermId
       );
+      const grade = raw ? normalizeTermGrade(raw) : undefined;
       const yearAvg = computeSchoolYearPercent(termGrades, termsInYear, studentId, cls.id);
       return { cls, grade, yearAvg };
     });
@@ -62,15 +77,25 @@ export function StudentTermGradesCard({ studentId, enrolledClasses }: StudentTer
             Term grades
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            Weighted summative averages per class. Official marks may differ from calculated.
+            Running grades update with new scores. Posted grades are the official report-card mark.
           </p>
         </div>
-        <TermFilterSelect
-          terms={academicTerms}
-          value={termId === "all" ? (selectedTermId ?? "all") : termId}
-          onChange={setTermId}
-          includeAll={false}
-        />
+        <div className="flex flex-col gap-2 sm:items-end">
+          <TermFilterSelect
+            terms={academicTerms}
+            value={termId === "all" ? (selectedTermId ?? "all") : termId}
+            onChange={setTermId}
+            includeAll={false}
+          />
+          {selectedTermId && (
+            <Button size="sm" variant="outline" asChild>
+              <Link to={`/students/${studentId}/report-card?termId=${selectedTermId}`}>
+                <FileText className="mr-1.5 h-3.5 w-3.5" />
+                Report card
+              </Link>
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {!selectedTerm ? (
@@ -90,51 +115,57 @@ export function StudentTermGradesCard({ studentId, enrolledClasses }: StudentTer
                 <TableHeader>
                   <TableRow className="hover:bg-transparent bg-muted/30">
                     <TableHead>Class</TableHead>
-                    <TableHead className="text-right">Calculated</TableHead>
-                    <TableHead className="text-right">Submitted</TableHead>
+                    <TableHead className="text-right">Running</TableHead>
+                    <TableHead className="text-right">Posted</TableHead>
                     <TableHead className="text-right">Year avg</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map(({ cls, grade, yearAvg }) => {
-                    const effective = grade ? effectiveTermPercent(grade) : null;
-                    const letter = grade ? effectiveTermLetter(grade) : null;
+                    const running = grade ? runningTermPercent(grade) : null;
+                    const posted = grade && isTermGradePosted(grade);
+                    const displayPct = grade ? displayTermPercent(grade) : null;
+                    const letter = grade ? displayTermLetter(grade, termLetterBands) : null;
+
                     return (
                       <TableRow key={cls.id}>
                         <TableCell>
                           <Link
-                            to={`/classes/${cls.id}?tab=grades`}
+                            to={`/classes/${cls.id}?tab=term-grades`}
                             className="text-sm font-medium hover:text-primary"
                           >
                             {cls.name}
                           </Link>
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">
-                          {grade?.calculatedPercent != null ? (
+                          {running != null ? (
                             <>
-                              {grade.calculatedPercent}%
-                              {grade.calculatedLetter && (
+                              {running}%
+                              {grade?.calculatedLetter && (
                                 <span className="ml-1 text-xs text-muted-foreground">
                                   ({grade.calculatedLetter})
                                 </span>
                               )}
                             </>
                           ) : (
-                            "—"
+                            <span className="text-muted-foreground">Incomplete</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold tabular-nums">
-                          {grade?.submittedPercent != null ? (
-                            `${grade.submittedPercent}%`
-                          ) : effective != null ? (
-                            <span className="text-muted-foreground">{effective}%</span>
+                          {posted && displayPct != null ? (
+                            <span className="inline-flex items-center justify-end gap-1">
+                              {displayPct}%
+                              {letter && (
+                                <Badge variant="outline" className="text-[10px] font-normal">
+                                  {letter}
+                                </Badge>
+                              )}
+                              <Lock className="h-3 w-3 text-muted-foreground" />
+                            </span>
                           ) : (
-                            "—"
-                          )}
-                          {letter && (
-                            <Badge variant="outline" className="ml-1.5 text-[10px] font-normal">
-                              {letter}
-                            </Badge>
+                            <span className="text-xs font-normal text-muted-foreground">
+                              Not posted
+                            </span>
                           )}
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums text-muted-foreground">

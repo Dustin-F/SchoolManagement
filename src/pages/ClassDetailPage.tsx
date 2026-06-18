@@ -19,6 +19,8 @@ import {
   LayoutGrid,
   ArrowLeft,
   ClipboardList,
+  BookOpen,
+  Grid3x3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -76,6 +78,8 @@ import { TaskScoreInput, type TaskScoreUpdate } from "@/features/tasks/TaskScore
 import { isRubricMode } from "@/lib/taskScoringUtils";
 import { StudentRosterTable } from "@/features/classes/StudentRosterTable";
 import { ClassTasksSection } from "@/features/classes/ClassTasksSection";
+import { ClassUnitsSection } from "@/features/classes/ClassUnitsSection";
+import { ClassGradebookGrid } from "@/features/assessment/ClassGradebookGrid";
 import { ClassTermGradesSection } from "@/features/assessment/ClassTermGradesSection";
 import { ClassSessionNotesCard } from "@/features/classes/ClassSessionNotesCard";
 import { ClassOverviewTab } from "@/features/classes/ClassOverviewTab";
@@ -502,13 +506,20 @@ export function ClassDetailPage() {
     setProgressRecord(record);
   };
 
-  type ClassTab = "overview" | "tasks" | "incomplete" | "grades";
+  type ClassTab = "overview" | "units" | "tasks" | "incomplete" | "gradebook" | "term-grades";
 
   const isSessionView = !!(dateParam || eventIdParam);
 
   const classTab: ClassTab = useMemo(() => {
     const tab = searchParams.get("tab");
-    if (tab === "tasks" || tab === "incomplete" || tab === "grades") {
+    if (tab === "grades") return "term-grades";
+    if (
+      tab === "units" ||
+      tab === "tasks" ||
+      tab === "incomplete" ||
+      tab === "gradebook" ||
+      tab === "term-grades"
+    ) {
       return tab;
     }
     return "overview";
@@ -532,6 +543,16 @@ export function ClassDetailPage() {
           `${window.location.pathname}${window.location.search}#schedule`
         );
       }
+    }
+    if (tab === "grades") {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set("tab", "term-grades");
+          return next;
+        },
+        { replace: true }
+      );
     }
   }, [searchParams, setSearchParams]);
 
@@ -663,7 +684,12 @@ export function ClassDetailPage() {
     );
   }
 
-  const isFocusedTab = classTab === "tasks" || classTab === "grades" || classTab === "incomplete";
+  const isFocusedTab =
+    classTab === "units" ||
+    classTab === "tasks" ||
+    classTab === "gradebook" ||
+    classTab === "term-grades" ||
+    classTab === "incomplete";
   const sessionStatus = getEffectiveSessionStatus(
     sessionRecord,
     activeOccurrence
@@ -802,6 +828,16 @@ export function ClassDetailPage() {
         </Button>
         <Button
           type="button"
+          variant={classTab === "units" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("units")}
+        >
+          <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+          Units
+        </Button>
+        <Button
+          type="button"
           variant={classTab === "tasks" ? "default" : "ghost"}
           size="sm"
           className="h-8 px-4 text-sm"
@@ -813,6 +849,26 @@ export function ClassDetailPage() {
               {activeTasksForClass.length}
             </span>
           )}
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "gradebook" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("gradebook")}
+        >
+          <Grid3x3 className="mr-1.5 h-3.5 w-3.5" />
+          Gradebook
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "term-grades" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("term-grades")}
+        >
+          <GraduationCap className="mr-1.5 h-3.5 w-3.5" />
+          Term grades
         </Button>
         <Button
           type="button"
@@ -828,16 +884,6 @@ export function ClassDetailPage() {
               {incompleteCount}
             </span>
           )}
-        </Button>
-        <Button
-          type="button"
-          variant={classTab === "grades" ? "default" : "ghost"}
-          size="sm"
-          className="h-8 px-4 text-sm"
-          onClick={() => setClassTab("grades")}
-        >
-          <GraduationCap className="mr-1.5 h-3.5 w-3.5" />
-          Term grades
         </Button>
       </div>
       )}
@@ -1091,6 +1137,8 @@ export function ClassDetailPage() {
         </>
       ) : classTab === "overview" ? (
         <ClassOverviewTab cls={cls} />
+      ) : classTab === "units" ? (
+        <ClassUnitsSection classId={cls.id} readOnly={classIsArchived} />
       ) : classTab === "tasks" ? (
         <ClassTasksSection
           classId={cls.id}
@@ -1111,6 +1159,8 @@ export function ClassDetailPage() {
         />
       ) : classTab === "incomplete" ? (
         <ClassIncompleteSection classId={cls.id} />
+      ) : classTab === "gradebook" ? (
+        <ClassGradebookGrid cls={cls} readOnly={classIsArchived} />
       ) : (
         <ClassTermGradesSection cls={cls} readOnly={classIsArchived} />
       )}

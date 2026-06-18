@@ -8,6 +8,7 @@ import {
 import { TaskStudentGradeRow } from "@/features/tasks/TaskStudentGradeRow";
 import type { TaskScoreUpdate } from "@/features/tasks/TaskScoreInput";
 import type { ClassTask, Student, StudentTaskRecord, StudentTaskStatus } from "@/types";
+import { formatTaskScoreHeader } from "@/lib/taskScoringUtils";
 
 interface SimpleGradeTableProps {
   task: ClassTask;
@@ -34,7 +35,12 @@ export function SimpleGradeTable({
         <TableRow className="hover:bg-transparent border-b border-border bg-muted/30">
           <TableHead className="min-w-[180px]">Student</TableHead>
           <TableHead className="min-w-[8rem]">Status</TableHead>
-          <TableHead className="min-w-[10rem]">Score</TableHead>
+          <TableHead className="min-w-[10rem]">
+            Score
+            <span className="ml-1 font-normal text-muted-foreground">
+              ({formatTaskScoreHeader(task)})
+            </span>
+          </TableHead>
           <TableHead className="w-10" />
         </TableRow>
       </TableHeader>

@@ -1,7 +1,6 @@
 import { getDefaultTermId } from "@/lib/assessmentUtils";
 import {
   buildTermGradeRows,
-  getTermLetterBands,
   mergeTermGrades,
 } from "@/lib/termGradeUtils";
 import { normalizeClassTask } from "@/lib/taskScoringUtils";
@@ -44,7 +43,7 @@ export function recalcTermGradesForClassTerm(
     records,
     categories,
     existing,
-    getTermLetterBands(schoolGradingSettings)
+    schoolGradingSettings
   );
   return mergeTermGrades(existing, rows);
 }

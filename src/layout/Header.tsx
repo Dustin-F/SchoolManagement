@@ -65,6 +65,8 @@ const pageTitles: Record<string, string> = {
   "/points": "Points",
   "/behaviour": "Points",
   "/missing-work": "Incomplete & to-do",
+  "/guide": "User guide",
+  "/settings/assessment": "Assessment",
 };
 
 interface HeaderProps {
@@ -163,6 +165,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       behaviourSkills: s.behaviourSkills,
       pointEvents: s.pointEvents,
       classTasks: s.classTasks,
+      classUnits: s.classUnits,
       studentTaskRecords: s.studentTaskRecords,
       classSessionNotes: s.classSessionNotes,
       classScheduleEvents: s.classScheduleEvents,

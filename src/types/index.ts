@@ -233,28 +233,70 @@ export interface ClassTask extends BaseEntity {
   /** When true, hidden from the main class workspace; see archived section. */
   archived?: boolean;
   rubric?: RubricCriterion[];
+  /** Optional curriculum unit (IB planner). */
+  unitId?: string;
+  /** Visible to students/parents when true. */
+  publishedToStudents?: boolean;
+  publishedAt?: string;
 }
 
-export type StudentTaskStatus = "not_started" | "in_progress" | "completed" | "missing";
+export type ClassUnitStatus = "planned" | "in_progress" | "completed";
+
+/** Curriculum unit within a class (IB-style planner). */
+export interface ClassUnit extends BaseEntity {
+  classId: string;
+  title: string;
+  description?: string;
+  /** IB inquiry statement or essential question. */
+  inquiry?: string;
+  curriculumNotes?: string;
+  startDate: string;
+  endDate?: string;
+  durationWeeks?: number;
+  termId?: string;
+  sortOrder: number;
+  status?: ClassUnitStatus;
+}
+
+export type StudentTaskStatus =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "missing"
+  | "excused";
+
+/** How missing / ungraded summative tasks affect term grades. */
+export type MissingGradePolicy =
+  | "count_as_zero"
+  | "exclude_ungraded"
+  | "incomplete_while_missing";
+
+export type TermGradePostStatus = "draft" | "posted";
 
 /** Official term mark per student per class (report card grade). */
 export interface TermGrade extends BaseEntity {
   studentId: string;
   classId: string;
   termId: string;
-  /** Auto-calculated from weighted summative tasks. */
+  /** Live running grade from weighted summative tasks. */
   calculatedPercent: number | null;
-  /** Auto-derived from calculatedPercent and the school letter scale. */
   calculatedLetter?: string | null;
-  /** Teacher-submitted mark for reports (may override calculated). */
-  submittedPercent: number | null;
-  submittedLetter?: string | null;
+  /** Posted report-card mark (official once postStatus is posted). */
+  postedPercent: number | null;
+  postedLetter?: string | null;
+  postStatus?: TermGradePostStatus;
+  postedAt?: string | null;
   comment?: string;
+  /** @deprecated Use postedPercent */
+  submittedPercent?: number | null;
+  /** @deprecated Use postedLetter */
+  submittedLetter?: string | null;
 }
 
 /** School-wide grading configuration (singleton). */
 export interface SchoolGradingSettings extends BaseEntity {
   termLetterBands: LetterGradeBand[];
+  missingPolicy?: MissingGradePolicy;
 }
 
 /** Lesson plan / session notes for one class on one calendar day. */
@@ -302,6 +344,7 @@ export interface AppData {
   behaviourSkills: BehaviourSkill[];
   pointEvents: PointEvent[];
   classTasks: ClassTask[];
+  classUnits: ClassUnit[];
   studentTaskRecords: StudentTaskRecord[];
   classSessionNotes: ClassSessionNote[];
   classScheduleEvents: ClassScheduleEvent[];

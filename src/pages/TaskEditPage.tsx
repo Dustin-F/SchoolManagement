@@ -22,6 +22,7 @@ import {
 import { useAppStore } from "@/store";
 import { classTaskSchema, type ClassTaskFormData } from "@/lib/schemas";
 import { categoriesForSubject, getDefaultTermId, termLabel, categoryLabel } from "@/lib/assessmentUtils";
+import { unitsForClass } from "@/data/seedUnits";
 import { RubricCriteriaEditor } from "@/features/tasks/RubricCriteriaEditor";
 import {
   DEFAULT_LETTER_GRADES,
@@ -58,6 +59,7 @@ export function TaskEditPage() {
 
   const classes = useAppStore((s) => s.classes);
   const classTasks = useAppStore((s) => s.classTasks);
+  const classUnits = useAppStore((s) => s.classUnits);
   const academicTerms = useAppStore((s) => s.academicTerms);
   const taskAssessmentCategories = useAppStore((s) => s.taskAssessmentCategories);
   const addClassTask = useAppStore((s) => s.addClassTask);
@@ -70,6 +72,7 @@ export function TaskEditPage() {
     : [];
   const defaultTermId = getDefaultTermId(academicTerms) ?? "";
   const defaultCategoryId = classCategories[0]?.id ?? "";
+  const unitsForThisClass = cls ? unitsForClass(classUnits, cls.id) : [];
 
   const [rubric, setRubric] = useState<RubricCriterion[]>([]);
   const [letterGrades, setLetterGrades] = useState<LetterGradeBand[]>(DEFAULT_LETTER_GRADES);
@@ -95,6 +98,7 @@ export function TaskEditPage() {
       assessmentRole: "summative",
       termId: defaultTermId,
       categoryId: defaultCategoryId,
+      unitId: "",
     },
   });
 
@@ -103,6 +107,7 @@ export function TaskEditPage() {
   const assessmentRole = watch("assessmentRole");
   const termIdValue = watch("termId");
   const categoryIdValue = watch("categoryId");
+  const unitIdValue = watch("unitId");
 
   useEffect(() => {
     if (!cls) return;
@@ -132,6 +137,7 @@ export function TaskEditPage() {
         assessmentRole: editingTask.assessmentRole ?? "summative",
         termId: editingTask.termId ?? defaultTermId,
         categoryId: editingTask.categoryId ?? defaultCategoryId,
+        unitId: editingTask.unitId ?? "",
       });
     } else {
       setRubric([]);
@@ -148,6 +154,7 @@ export function TaskEditPage() {
         assessmentRole: "summative",
         termId: defaultTermId,
         categoryId: defaultCategoryId,
+        unitId: "",
       });
     }
   }, [cls, editingTask, isNew, reset, defaultTermId, defaultCategoryId]);
@@ -207,6 +214,7 @@ export function TaskEditPage() {
       assessmentRole: data.assessmentRole,
       termId: data.termId,
       categoryId: data.categoryId,
+      unitId: data.unitId?.trim() || undefined,
     };
 
     if (editingTask) {
@@ -378,6 +386,27 @@ export function TaskEditPage() {
               <p className="text-xs text-muted-foreground">
                 Formative tasks are tracked but excluded from weighted term grade calculations.
               </p>
+            )}
+            {unitsForThisClass.length > 0 && (
+              <div className="space-y-2">
+                <Label>Unit (optional)</Label>
+                <Select
+                  value={unitIdValue || "none"}
+                  onValueChange={(v) => setValue("unitId", v === "none" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Link to a curriculum unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No unit</SelectItem>
+                    {unitsForThisClass.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </CardContent>
         </Card>

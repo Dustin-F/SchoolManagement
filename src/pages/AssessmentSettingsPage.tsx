@@ -42,9 +42,10 @@ import {
 import { DatePicker } from "@/components/ui/date-picker";
 import { useAppStore } from "@/store";
 import { totalCategoryWeight } from "@/lib/assessmentUtils";
+import { MISSING_POLICY_LABELS } from "@/lib/gradingPolicy";
 import { getTermLetterBands } from "@/lib/termGradeUtils";
 import { DEFAULT_LETTER_GRADES, sortLetterGrades } from "@/lib/taskScoringUtils";
-import type { AcademicTerm, LetterGradeBand, TaskAssessmentCategory } from "@/types";
+import type { AcademicTerm, LetterGradeBand, MissingGradePolicy, TaskAssessmentCategory } from "@/types";
 
 export function AssessmentSettingsPage() {
   const academicTerms = useAppStore((s) => s.academicTerms);
@@ -57,17 +58,23 @@ export function AssessmentSettingsPage() {
   const updateTaskAssessmentCategory = useAppStore((s) => s.updateTaskAssessmentCategory);
   const deleteTaskAssessmentCategory = useAppStore((s) => s.deleteTaskAssessmentCategory);
   const schoolGradingSettings = useAppStore((s) => s.schoolGradingSettings);
-  const updateTermLetterBands = useAppStore((s) => s.updateTermLetterBands);
+  const updateSchoolGradingSettings = useAppStore((s) => s.updateSchoolGradingSettings);
 
   const termLetterBands = useMemo(
     () => getTermLetterBands(schoolGradingSettings),
     [schoolGradingSettings]
   );
+  const missingPolicy = useMemo(
+    () => schoolGradingSettings[0]?.missingPolicy ?? "count_as_zero",
+    [schoolGradingSettings]
+  );
   const [letterBands, setLetterBands] = useState<LetterGradeBand[]>(termLetterBands);
+  const [policy, setPolicy] = useState<MissingGradePolicy>(missingPolicy);
 
   useEffect(() => {
     setLetterBands(termLetterBands);
-  }, [termLetterBands]);
+    setPolicy(missingPolicy);
+  }, [termLetterBands, missingPolicy]);
 
   const [termDialogOpen, setTermDialogOpen] = useState(false);
   const [editingTerm, setEditingTerm] = useState<AcademicTerm | null>(null);
@@ -120,9 +127,17 @@ export function AssessmentSettingsPage() {
       toast.error("Add at least one letter band.");
       return;
     }
-    updateTermLetterBands(cleaned);
+    updateSchoolGradingSettings({
+      termLetterBands: cleaned,
+      missingPolicy: policy,
+    });
     setLetterBands(cleaned);
-    toast.success("Term letter scale updated.");
+    toast.success("Grading settings updated.");
+  };
+
+  const saveMissingPolicy = () => {
+    updateSchoolGradingSettings({ missingPolicy: policy });
+    toast.success("Missing-work policy updated.");
   };
 
   return (
@@ -289,6 +304,43 @@ export function AssessmentSettingsPage() {
               Subject-specific categories can be added when editing a category and selecting a subject.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <GraduationCap className="h-5 w-5 text-muted-foreground" />
+            Grading policy
+          </CardTitle>
+          <CardDescription>
+            Controls how missing and ungraded summative work affects running term grades.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="missing-policy">Missing / ungraded work</Label>
+              <Select
+                value={policy}
+                onValueChange={(v) => setPolicy(v as MissingGradePolicy)}
+              >
+                <SelectTrigger id="missing-policy">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(MISSING_POLICY_LABELS) as MissingGradePolicy[]).map((key) => (
+                    <SelectItem key={key} value={key}>
+                      {MISSING_POLICY_LABELS[key]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="button" onClick={saveMissingPolicy}>
+              Save policy
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

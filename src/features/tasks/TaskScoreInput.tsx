@@ -18,6 +18,7 @@ import {
   letterGradeForRecord,
   parseNumericScore,
   resolveScoreMode,
+  scoreInputScaleLabel,
   type TaskScorePatch,
 } from "@/lib/taskScoringUtils";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,7 @@ export function TaskScoreInput({
 
   const bands = getLetterGrades(task);
   const displayLetter = letterGradeForRecord(task, record) ?? "";
+  const scaleLabel = scoreInputScaleLabel(task);
 
   const numericInput = (
     <Input
@@ -76,26 +78,42 @@ export function TaskScoreInput({
       min={0}
       max={mode === "percentage" ? 100 : (task.maxScore ?? undefined)}
       inputMode="decimal"
-      placeholder={mode === "percentage" ? "%" : "—"}
+      placeholder="—"
       className={cn(
         "px-1 text-center tabular-nums",
         compact ? "h-8 w-[3.25rem] text-xs" : "h-9 w-20 text-sm",
         lettersEnabled && compact && "w-12"
       )}
       defaultValue={record.score != null ? String(record.score) : ""}
-      title={
-        mode === "percentage"
-          ? "Score out of 100%"
-          : task.maxScore != null
-            ? `Score out of ${task.maxScore}`
-            : "Score"
+      aria-label={
+        scaleLabel
+          ? `Score ${mode === "percentage" ? "out of 100 percent" : `out of ${task.maxScore}`}`
+          : "Score"
       }
       onBlur={(e) => {
         const next = parseNumericScore(task, e.target.value);
+        e.target.value = next != null ? String(next) : "";
         onScoreUpdate(record, buildScoreUpdateFromNumeric(task, next));
       }}
       onClick={(e) => e.stopPropagation()}
     />
+  );
+
+  const numericField = scaleLabel ? (
+    <div className="inline-flex items-center gap-0.5">
+      {numericInput}
+      <span
+        className={cn(
+          "shrink-0 tabular-nums text-muted-foreground",
+          compact ? "text-xs" : "text-sm"
+        )}
+        aria-hidden
+      >
+        {scaleLabel}
+      </span>
+    </div>
+  ) : (
+    numericInput
   );
 
   const letterSelect = (
@@ -131,11 +149,11 @@ export function TaskScoreInput({
   if (lettersEnabled) {
     return (
       <div className={cn("flex items-center justify-center gap-1", className)}>
-        {numericInput}
+        {numericField}
         {letterSelect}
       </div>
     );
   }
 
-  return numericInput;
+  return <div className={cn("flex justify-center", className)}>{numericField}</div>;
 }

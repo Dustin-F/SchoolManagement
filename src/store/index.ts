@@ -10,6 +10,7 @@ import type {
   BehaviourSkill,
   PointEvent,
   ClassTask,
+  ClassUnit,
   ClassSessionNote,
   ClassScheduleEvent,
   ClassSessionException,
@@ -20,6 +21,7 @@ import type {
   ScheduleEditScope,
   AppData,
   SchoolGradingSettings,
+  MissingGradePolicy,
   LetterGradeBand,
 } from "@/types";
 import {
@@ -47,7 +49,16 @@ import {
 import { removeStudentFromClassRoster } from "@/lib/archiveUtils";
 import { orderStudentIdsByGrid } from "@/lib/seatingUtils";
 import { getDefaultTermId } from "@/lib/assessmentUtils";
-import { termGradeKey } from "@/lib/termGradeUtils";
+import {
+  DEFAULT_SCHOOL_GRADING_SETTINGS_ID,
+  getTermLetterBands,
+  letterForTermPercent,
+  normalizeTermGrade,
+  postTermGradeFromRunning,
+  termGradeKey,
+  unpostTermGrade,
+} from "@/lib/termGradeUtils";
+import { normalizeSchoolGradingSettings } from "@/lib/gradingPolicy";
 import { normalizeClassTask } from "@/lib/taskScoringUtils";
 import { migratePeople } from "@/lib/personNames";
 import {
@@ -59,11 +70,14 @@ import {
   recalcTermGradesForClassTerm,
 } from "@/store/termGradeSync";
 import { seedSchoolGradingSettings } from "@/data/seedAssessment";
-import { DEFAULT_SCHOOL_GRADING_SETTINGS_ID, getTermLetterBands, letterForTermPercent } from "@/lib/termGradeUtils";
+import { seedClassUnits } from "@/data/seedUnits";
+import {
+  applyFreshSeedToStorage,
+  isSeedVersionStale,
+} from "@/data/seedBootstrap";
 import { bootstrapScheduleState } from "@/store/scheduleBootstrap";
 import { applyScheduleEdit } from "@/lib/scheduleEditUtils";
 import type { ScheduleEventFormData } from "@/lib/schemas";
-import { seedSessionExceptions } from "@/data/seedSchedule";
 
 function normalizeClassTasksWithTerms(tasks: ClassTask[], terms: AcademicTerm[]): ClassTask[] {
   return normalizeClassTasks(tasks, getDefaultTermId(terms));
@@ -110,6 +124,7 @@ interface AppStore {
   behaviourSkills: BehaviourSkill[];
   pointEvents: PointEvent[];
   classTasks: ClassTask[];
+  classUnits: ClassUnit[];
   studentTaskRecords: StudentTaskRecord[];
   classSessionNotes: ClassSessionNote[];
   classScheduleEvents: ClassScheduleEvent[];
@@ -158,7 +173,12 @@ interface AppStore {
   deleteClassTask: (id: string) => void;
   archiveClassTask: (id: string) => void;
   unarchiveClassTask: (id: string) => void;
+  setTaskPublished: (taskId: string, published: boolean) => void;
   updateStudentTaskRecord: (id: string, data: Partial<Omit<StudentTaskRecord, "id" | "taskId" | "studentId">>) => void;
+
+  addClassUnit: (data: Omit<ClassUnit, "id" | "createdAt" | "updatedAt">) => string;
+  updateClassUnit: (id: string, data: Partial<ClassUnit>) => void;
+  deleteClassUnit: (id: string) => void;
 
   addAcademicTerm: (data: Omit<AcademicTerm, "id" | "createdAt" | "updatedAt">) => void;
   updateAcademicTerm: (id: string, data: Partial<AcademicTerm>) => void;
@@ -168,14 +188,31 @@ interface AppStore {
   updateTaskAssessmentCategory: (id: string, data: Partial<TaskAssessmentCategory>) => void;
   deleteTaskAssessmentCategory: (id: string) => void;
 
-  upsertTermGrade: (
+  updateTermGradeComment: (
     studentId: string,
     classId: string,
     termId: string,
-    data: Partial<Pick<TermGrade, "submittedPercent" | "submittedLetter" | "comment">>
+    comment: string | undefined
+  ) => void;
+  postTermGrade: (
+    studentId: string,
+    classId: string,
+    termId: string,
+    override?: { postedPercent?: number | null; postedLetter?: string | null }
+  ) => void;
+  postAllTermGrades: (classId: string, termId: string, studentIds?: string[]) => void;
+  unpostTermGradeForStudent: (studentId: string, classId: string, termId: string) => void;
+  updatePostedTermGrade: (
+    studentId: string,
+    classId: string,
+    termId: string,
+    data: { postedPercent?: number | null; postedLetter?: string | null; comment?: string }
   ) => void;
   recalculateClassTermGrades: (classId: string, termId: string) => void;
-  updateTermLetterBands: (bands: LetterGradeBand[]) => void;
+  updateSchoolGradingSettings: (data: {
+    termLetterBands?: LetterGradeBand[];
+    missingPolicy?: MissingGradePolicy;
+  }) => void;
 
   upsertClassSessionNote: (
     classId: string,
@@ -222,6 +259,7 @@ interface AppStore {
     behaviourSkills: BehaviourSkill[];
     pointEvents: PointEvent[];
     classTasks: ClassTask[];
+    classUnits: ClassUnit[];
     studentTaskRecords: StudentTaskRecord[];
     classSessionNotes: ClassSessionNote[];
     classScheduleEvents: ClassScheduleEvent[];
@@ -279,8 +317,12 @@ export const useAppStore = create<AppStore>((set) => {
   );
   const termCrud = createCrudActions<AcademicTerm>("academicTerms", set, (s) => s.academicTerms);
 
-  const loadedTerms = loadOrSeed("academicTerms", seedAcademicTerms);
   const bootTs = timestamp();
+  if (typeof window !== "undefined" && isSeedVersionStale()) {
+    applyFreshSeedToStorage(bootTs);
+  }
+
+  const loadedTerms = loadOrSeed("academicTerms", seedAcademicTerms);
   const rawClasses = loadOrSeed("classes", seedClasses);
   const rawNotes = loadOrSeed("classSessionNotes", seedClassSessionNotes);
   const scheduleBoot = bootstrapScheduleState(rawClasses, rawNotes, bootTs);
@@ -299,6 +341,7 @@ export const useAppStore = create<AppStore>((set) => {
       loadOrSeed("classTasks", seedClassTasks),
       loadedTerms
     ),
+    classUnits: loadOrSeedIfEmpty("classUnits", seedClassUnits),
     studentTaskRecords: loadOrSeed("studentTaskRecords", seedStudentTaskRecords),
     classSessionNotes: scheduleBoot.classSessionNotes,
     classScheduleEvents: scheduleBoot.classScheduleEvents,
@@ -311,7 +354,7 @@ export const useAppStore = create<AppStore>((set) => {
     termGrades: loadOrSeed("termGrades", seedTermGrades),
     schoolGradingSettings: loadOrSeedIfEmpty(
       "schoolGradingSettings",
-      seedSchoolGradingSettings
+      normalizeSchoolGradingSettings(seedSchoolGradingSettings)
     ),
 
     addTeacher: teacherCrud.add,
@@ -462,6 +505,7 @@ export const useAppStore = create<AppStore>((set) => {
         const taskIds = taskIdsForClass(id, state.classTasks);
         const classes = state.classes.filter((c) => c.id !== id);
         const classTasks = state.classTasks.filter((t) => t.classId !== id);
+        const classUnits = state.classUnits.filter((u) => u.classId !== id);
         const studentTaskRecords = removeRecordsForTaskIds(taskIds, state.studentTaskRecords);
         const attendance = state.attendance.filter((a) => a.classId !== id);
         const pointEvents = state.pointEvents.filter((e) => e.classId !== id);
@@ -470,6 +514,7 @@ export const useAppStore = create<AppStore>((set) => {
         const classSessionExceptions = state.classSessionExceptions.filter((e) => e.classId !== id);
         storage.set("classes", classes);
         storage.set("classTasks", classTasks);
+        storage.set("classUnits", classUnits);
         storage.set("studentTaskRecords", studentTaskRecords);
         storage.set("attendance", attendance);
         storage.set("pointEvents", pointEvents);
@@ -479,6 +524,7 @@ export const useAppStore = create<AppStore>((set) => {
         return {
           classes,
           classTasks,
+          classUnits,
           studentTaskRecords,
           attendance,
           pointEvents,
@@ -757,11 +803,61 @@ export const useAppStore = create<AppStore>((set) => {
         return { classTasks, studentTaskRecords, termGrades };
       });
     },
+    setTaskPublished: (taskId: string, published: boolean) => {
+      set((state) => {
+        const ts = timestamp();
+        const classTasks = state.classTasks.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                publishedToStudents: published,
+                publishedAt: published ? ts : undefined,
+                updatedAt: ts,
+              }
+            : t
+        );
+        storage.set("classTasks", classTasks);
+        return { classTasks };
+      });
+    },
+
+    addClassUnit: (data) => {
+      const ts = timestamp();
+      const id = nanoid();
+      const unit: ClassUnit = { ...data, id, createdAt: ts, updatedAt: ts };
+      set((state) => {
+        const classUnits = [...state.classUnits, unit];
+        storage.set("classUnits", classUnits);
+        return { classUnits };
+      });
+      return id;
+    },
+    updateClassUnit: (id: string, data: Partial<ClassUnit>) => {
+      set((state) => {
+        const classUnits = state.classUnits.map((u) =>
+          u.id === id ? { ...u, ...data, updatedAt: timestamp() } : u
+        );
+        storage.set("classUnits", classUnits);
+        return { classUnits };
+      });
+    },
+    deleteClassUnit: (id: string) => {
+      set((state) => {
+        const classUnits = state.classUnits.filter((u) => u.id !== id);
+        const classTasks = state.classTasks.map((t) =>
+          t.unitId === id ? { ...t, unitId: undefined, updatedAt: timestamp() } : t
+        );
+        storage.set("classUnits", classUnits);
+        storage.set("classTasks", classTasks);
+        return { classUnits, classTasks };
+      });
+    },
+
     updateStudentTaskRecord: (id: string, data) => {
       set((state) => {
         const prev = state.studentTaskRecords.find((r) => r.id === id);
         let patch = { ...data };
-        if (patch.status === "missing") {
+        if (patch.status === "missing" || patch.status === "excused") {
           patch = {
             ...patch,
             score: null,
@@ -833,66 +929,127 @@ export const useAppStore = create<AppStore>((set) => {
       });
     },
 
-    upsertTermGrade: (studentId, classId, termId, data) => {
+    updateTermGradeComment: (studentId, classId, termId, comment) => {
       set((state) => {
-        const ts = timestamp();
         const key = termGradeKey(studentId, classId, termId);
+        const ts = timestamp();
         const existing = state.termGrades.find((g) => g.id === key);
-        const cls = state.classes.find((c) => c.id === classId);
-        const bands = getTermLetterBands(state.schoolGradingSettings);
-        const recalculated = cls
-          ? recalcTermGradesForClassTerm(
-              cls,
-              termId,
-              state.classTasks,
-              state.studentTaskRecords,
-              state.taskAssessmentCategories,
-              state.termGrades,
-              state.schoolGradingSettings,
-              [studentId]
-            ).find((g) => g.studentId === studentId)
-          : undefined;
-
-        const calculatedPercent =
-          recalculated?.calculatedPercent ?? existing?.calculatedPercent ?? null;
-        const calculatedLetter =
-          recalculated?.calculatedLetter ?? existing?.calculatedLetter ?? null;
-
-        const submittedPercent =
-          data.submittedPercent !== undefined
-            ? data.submittedPercent
-            : (existing?.submittedPercent ?? null);
-
-        let submittedLetter =
-          data.submittedLetter !== undefined
-            ? data.submittedLetter
-            : (existing?.submittedLetter ?? null);
-
-        if (
-          data.submittedPercent !== undefined &&
-          data.submittedLetter === undefined &&
-          submittedPercent != null
-        ) {
-          submittedLetter = letterForTermPercent(submittedPercent, bands);
-        }
-
-        const next: TermGrade = {
+        const next = normalizeTermGrade({
           id: key,
           studentId,
           classId,
           termId,
-          calculatedPercent,
-          calculatedLetter,
-          submittedPercent,
-          submittedLetter: submittedLetter?.trim() ? submittedLetter.trim() : null,
-          comment: data.comment !== undefined ? data.comment : existing?.comment,
+          calculatedPercent: existing?.calculatedPercent ?? null,
+          calculatedLetter: existing?.calculatedLetter ?? null,
+          postedPercent: existing?.postedPercent ?? null,
+          postedLetter: existing?.postedLetter ?? null,
+          postStatus: existing?.postStatus ?? "draft",
+          postedAt: existing?.postedAt ?? null,
+          comment,
           createdAt: existing?.createdAt ?? ts,
           updatedAt: ts,
-        };
-
+        });
         const termGrades = existing
           ? state.termGrades.map((g) => (g.id === key ? next : g))
           : [...state.termGrades, next];
+        storage.set("termGrades", termGrades);
+        return { termGrades };
+      });
+    },
+
+    postTermGrade: (studentId, classId, termId, override) => {
+      set((state) => {
+        const key = termGradeKey(studentId, classId, termId);
+        const bands = getTermLetterBands(state.schoolGradingSettings);
+        const cls = state.classes.find((c) => c.id === classId);
+        let grade = state.termGrades.find((g) => g.id === key);
+        if (!grade && cls) {
+          grade = recalcTermGradesForClassTerm(
+            cls,
+            termId,
+            state.classTasks,
+            state.studentTaskRecords,
+            state.taskAssessmentCategories,
+            state.termGrades,
+            state.schoolGradingSettings,
+            [studentId]
+          ).find((g) => g.studentId === studentId);
+        }
+        if (!grade) return {};
+        const next = postTermGradeFromRunning(normalizeTermGrade(grade), bands, override);
+        const termGrades = state.termGrades.some((g) => g.id === key)
+          ? state.termGrades.map((g) => (g.id === key ? next : g))
+          : [...state.termGrades, next];
+        storage.set("termGrades", termGrades);
+        return { termGrades };
+      });
+    },
+
+    postAllTermGrades: (classId, termId, studentIds) => {
+      set((state) => {
+        const cls = state.classes.find((c) => c.id === classId);
+        if (!cls) return {};
+        const bands = getTermLetterBands(state.schoolGradingSettings);
+        const targets = studentIds ?? cls.studentIds;
+        let termGrades = recalcTermGradesForClassTerm(
+          cls,
+          termId,
+          state.classTasks,
+          state.studentTaskRecords,
+          state.taskAssessmentCategories,
+          state.termGrades,
+          state.schoolGradingSettings,
+          targets
+        );
+        for (const studentId of targets) {
+          const key = termGradeKey(studentId, classId, termId);
+          const grade = termGrades.find((g) => g.id === key);
+          if (!grade || grade.calculatedPercent == null) continue;
+          const posted = postTermGradeFromRunning(normalizeTermGrade(grade), bands);
+          termGrades = termGrades.map((g) => (g.id === key ? posted : g));
+        }
+        storage.set("termGrades", termGrades);
+        return { termGrades };
+      });
+    },
+
+    unpostTermGradeForStudent: (studentId, classId, termId) => {
+      set((state) => {
+        const key = termGradeKey(studentId, classId, termId);
+        const existing = state.termGrades.find((g) => g.id === key);
+        if (!existing) return {};
+        const next = unpostTermGrade(existing);
+        const termGrades = state.termGrades.map((g) => (g.id === key ? next : g));
+        storage.set("termGrades", termGrades);
+        return { termGrades };
+      });
+    },
+
+    updatePostedTermGrade: (studentId, classId, termId, data) => {
+      set((state) => {
+        const key = termGradeKey(studentId, classId, termId);
+        const existing = state.termGrades.find((g) => g.id === key);
+        if (!existing) return {};
+        const g = normalizeTermGrade(existing);
+        const bands = getTermLetterBands(state.schoolGradingSettings);
+        const postedPercent =
+          data.postedPercent !== undefined ? data.postedPercent : g.postedPercent;
+        let postedLetter =
+          data.postedLetter !== undefined ? data.postedLetter : g.postedLetter;
+        if (data.postedPercent !== undefined && data.postedLetter === undefined) {
+          postedLetter =
+            postedPercent != null ? letterForTermPercent(postedPercent, bands) : null;
+        }
+        const next: TermGrade = {
+          ...g,
+          postedPercent,
+          postedLetter: postedLetter?.trim() ? postedLetter.trim() : null,
+          comment: data.comment !== undefined ? data.comment : g.comment,
+          postStatus: "posted",
+          postedAt: g.postedAt ?? timestamp(),
+          updatedAt: timestamp(),
+        };
+        const termGrades = state.termGrades.map((item) => (item.id === key ? next : item));
         storage.set("termGrades", termGrades);
         return { termGrades };
       });
@@ -916,20 +1073,28 @@ export const useAppStore = create<AppStore>((set) => {
       });
     },
 
-    updateTermLetterBands: (bands) => {
+    updateSchoolGradingSettings: (data) => {
       set((state) => {
         const ts = timestamp();
         const existing =
           state.schoolGradingSettings.find((s) => s.id === DEFAULT_SCHOOL_GRADING_SETTINGS_ID) ??
           state.schoolGradingSettings[0];
-        const nextSettings: SchoolGradingSettings = existing
-          ? { ...existing, termLetterBands: bands, updatedAt: ts }
-          : {
-              id: DEFAULT_SCHOOL_GRADING_SETTINGS_ID,
-              termLetterBands: bands,
-              createdAt: ts,
-              updatedAt: ts,
-            };
+        const nextSettings: SchoolGradingSettings = normalizeSchoolGradingSettings([
+          existing
+            ? {
+                ...existing,
+                termLetterBands: data.termLetterBands ?? existing.termLetterBands,
+                missingPolicy: data.missingPolicy ?? existing.missingPolicy,
+                updatedAt: ts,
+              }
+            : {
+                id: DEFAULT_SCHOOL_GRADING_SETTINGS_ID,
+                termLetterBands: data.termLetterBands ?? [],
+                missingPolicy: data.missingPolicy ?? "count_as_zero",
+                createdAt: ts,
+                updatedAt: ts,
+              },
+        ])[0]!;
         const schoolGradingSettings = existing
           ? state.schoolGradingSettings.map((s) => (s.id === existing.id ? nextSettings : s))
           : [...state.schoolGradingSettings, nextSettings];
@@ -1133,6 +1298,7 @@ export const useAppStore = create<AppStore>((set) => {
             mergeCloudCollection(payload.classTasks, state.classTasks),
             academicTerms
           ),
+          classUnits: mergeCloudCollection(payload.classUnits, state.classUnits),
           studentTaskRecords: mergeCloudCollection(
             payload.studentTaskRecords,
             state.studentTaskRecords
@@ -1180,42 +1346,7 @@ export const useAppStore = create<AppStore>((set) => {
     },
 
     resetToSeed: () => {
-      const ts = timestamp();
-      const scheduleBoot = bootstrapScheduleState(seedClasses, seedClassSessionNotes, ts);
-      const next = {
-        teachers: migratePeople(seedTeachers),
-        students: migratePeople(seedStudents),
-        classes: scheduleBoot.classes,
-        subjects: seedSubjects,
-        attendance: seedAttendance,
-        behaviourSkills: seedBehaviourSkills,
-        pointEvents: seedPointEvents,
-        classTasks: normalizeClassTasksWithTerms(seedClassTasks, seedAcademicTerms),
-        studentTaskRecords: seedStudentTaskRecords,
-        classSessionNotes: scheduleBoot.classSessionNotes,
-        classScheduleEvents: scheduleBoot.classScheduleEvents,
-        classSessionExceptions: seedSessionExceptions,
-        academicTerms: seedAcademicTerms,
-        taskAssessmentCategories: seedTaskAssessmentCategories,
-        termGrades: seedTermGrades,
-        schoolGradingSettings: seedSchoolGradingSettings,
-      };
-      storage.set("teachers", next.teachers);
-      storage.set("students", next.students);
-      storage.set("classes", next.classes);
-      storage.set("subjects", next.subjects);
-      storage.set("attendance", next.attendance);
-      storage.set("behaviourSkills", next.behaviourSkills);
-      storage.set("pointEvents", next.pointEvents);
-      storage.set("classTasks", next.classTasks);
-      storage.set("studentTaskRecords", next.studentTaskRecords);
-      storage.set("classSessionNotes", next.classSessionNotes);
-      storage.set("classScheduleEvents", next.classScheduleEvents);
-      storage.set("classSessionExceptions", next.classSessionExceptions);
-      storage.set("academicTerms", next.academicTerms);
-      storage.set("taskAssessmentCategories", next.taskAssessmentCategories);
-      storage.set("termGrades", next.termGrades);
-      storage.set("schoolGradingSettings", next.schoolGradingSettings);
+      const next = applyFreshSeedToStorage(timestamp());
       set(next);
     },
   };
@@ -1232,6 +1363,7 @@ connectCloudPersistence(() => {
     behaviourSkills: s.behaviourSkills,
     pointEvents: s.pointEvents,
     classTasks: s.classTasks,
+    classUnits: s.classUnits,
     studentTaskRecords: s.studentTaskRecords,
     classSessionNotes: s.classSessionNotes,
     classScheduleEvents: s.classScheduleEvents,

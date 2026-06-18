@@ -1,14 +1,23 @@
 import { Fragment, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ChevronDown, ChevronRight, GraduationCap } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ClipboardCheck,
+  GraduationCap,
+  Lock,
+  RefreshCw,
+  Unlock,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { TermFilterSelect } from "@/features/assessment/TermFilterSelect";
 import { AssessmentWeightWarning } from "@/features/assessment/AssessmentWeightWarning";
 import { TermGradeBreakdownPanel } from "@/features/assessment/TermGradeBreakdownPanel";
+import { PostTermGradesDialog } from "@/features/assessment/PostTermGradesDialog";
 import {
   Table,
   TableBody,
@@ -22,15 +31,38 @@ import { classPageReturnTo, studentProfilePath } from "@/lib/studentNavigation";
 import { getActiveTerm, termLabel } from "@/lib/assessmentUtils";
 import {
   computeTermGradeBreakdown,
-  effectiveTermLetter,
-  effectiveTermPercent,
+  computeTermGradeCompletion,
+  displayTermLetter,
+  getTermLetterBands,
+  isTermGradePosted,
+  normalizeTermGrade,
+  officialTermPercent,
+  runningTermPercent,
 } from "@/lib/termGradeUtils";
 import { useAppStore } from "@/store";
 import type { SchoolClass, TermGrade } from "@/types";
+import { cn } from "@/lib/utils";
 
 interface ClassTermGradesSectionProps {
   cls: SchoolClass;
   readOnly?: boolean;
+}
+
+function GradeProgressBar({ graded, total }: { graded: number; total: number }) {
+  const pct = total > 0 ? Math.round((graded / total) * 100) : 0;
+  return (
+    <div className="flex min-w-[5.5rem] flex-col gap-1">
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[10px] tabular-nums text-muted-foreground">
+        {graded}/{total} graded
+      </span>
+    </div>
+  );
 }
 
 export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGradesSectionProps) {
@@ -42,14 +74,21 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
   const taskAssessmentCategories = useAppStore((s) => s.taskAssessmentCategories);
-  const upsertTermGrade = useAppStore((s) => s.upsertTermGrade);
+  const schoolGradingSettings = useAppStore((s) => s.schoolGradingSettings);
   const recalculateClassTermGrades = useAppStore((s) => s.recalculateClassTermGrades);
+  const postTermGrade = useAppStore((s) => s.postTermGrade);
+  const unpostTermGradeForStudent = useAppStore((s) => s.unpostTermGradeForStudent);
+  const updateTermGradeComment = useAppStore((s) => s.updateTermGradeComment);
 
   const [termId, setTermId] = useState(() => getActiveTerm(academicTerms)?.id ?? "all");
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<
-    Record<string, { submittedPercent: string; submittedLetter: string; comment: string }>
-  >({});
+  const [postDialogOpen, setPostDialogOpen] = useState(false);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+
+  const termLetterBands = useMemo(
+    () => getTermLetterBands(schoolGradingSettings),
+    [schoolGradingSettings]
+  );
 
   const classStudents = useMemo(() => {
     const order = new Map(cls.studentIds.map((id, i) => [id, i]));
@@ -70,74 +109,105 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
           g.classId === cls.id &&
           g.termId === selectedTermId
       );
-      return { student, grade };
+      return { student, grade: grade ? normalizeTermGrade(grade) : undefined };
     });
   }, [classStudents, termGrades, cls.id, selectedTermId]);
 
-  const getDraft = (grade: TermGrade | undefined, studentId: string) => {
+  const summary = useMemo(() => {
+    let posted = 0;
+    let incomplete = 0;
+    for (const { grade } of rows) {
+      if (!grade) continue;
+      if (isTermGradePosted(grade)) posted += 1;
+      else if (grade.calculatedPercent == null) incomplete += 1;
+    }
+    return { posted, incomplete, total: rows.length };
+  }, [rows]);
+
+  const getCommentDraft = (grade: TermGrade | undefined, studentId: string) => {
     const key = `${studentId}:${selectedTermId}`;
-    if (drafts[key]) return drafts[key];
-    return {
-      submittedPercent:
-        grade?.submittedPercent != null ? String(grade.submittedPercent) : "",
-      submittedLetter: grade?.submittedLetter ?? grade?.calculatedLetter ?? "",
-      comment: grade?.comment ?? "",
-    };
+    if (commentDrafts[key] !== undefined) return commentDrafts[key];
+    return grade?.comment ?? "";
   };
 
-  const saveRow = (studentId: string, grade: TermGrade | undefined) => {
+  const saveComment = (studentId: string, grade: TermGrade | undefined) => {
     if (!selectedTermId || readOnly) return;
-    const d = getDraft(grade, studentId);
-    const pct = d.submittedPercent.trim() === "" ? null : Number(d.submittedPercent);
-    if (d.submittedPercent.trim() !== "" && (!Number.isFinite(pct) || pct! < 0 || pct! > 100)) {
-      toast.error("Submitted % must be between 0 and 100.");
-      return;
-    }
-    upsertTermGrade(studentId, cls.id, selectedTermId, {
-      submittedPercent: pct,
-      submittedLetter: d.submittedLetter.trim() || null,
-      comment: d.comment.trim() || undefined,
+    const key = `${studentId}:${selectedTermId}`;
+    const comment = getCommentDraft(grade, studentId).trim();
+    updateTermGradeComment(studentId, cls.id, selectedTermId, comment || undefined);
+    setCommentDrafts((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
     });
   };
 
   return (
     <Card>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <GraduationCap className="h-5 w-5 text-muted-foreground" />
-            Term grades
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Weighted average from summative tasks. Missing and unscored work counts as 0%.
-          </p>
+      <CardHeader className="space-y-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <GraduationCap className="h-5 w-5 text-muted-foreground" />
+              Term grades
+            </CardTitle>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Running grade</span> updates as you
+              enter scores. <span className="font-medium text-foreground">Post grades</span> to
+              lock the official report-card mark.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {academicTerms.length > 0 && (
+              <TermFilterSelect
+                terms={academicTerms}
+                value={termId === "all" ? (selectedTermId ?? "all") : termId}
+                onChange={setTermId}
+                includeAll={false}
+                className="h-8 w-[12rem] text-xs"
+              />
+            )}
+            {!readOnly && selectedTermId && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    recalculateClassTermGrades(cls.id, selectedTermId);
+                    toast.success("Running grades refreshed.");
+                  }}
+                >
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                  Refresh
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setPostDialogOpen(true)}
+                >
+                  <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" />
+                  Post grades
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {academicTerms.length > 0 && (
-            <TermFilterSelect
-              terms={academicTerms}
-              value={termId === "all" ? (selectedTermId ?? "all") : termId}
-              onChange={setTermId}
-              includeAll={false}
-              className="h-8 w-[12rem] text-xs"
-            />
-          )}
-          {!readOnly && selectedTermId && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => {
-                recalculateClassTermGrades(cls.id, selectedTermId);
-                toast.success("Calculated grades refreshed.");
-              }}
-            >
-              Refresh calculated
-            </Button>
-          )}
-        </div>
+
+        {selectedTerm && (
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge variant="secondary">{termLabel(selectedTerm)}</Badge>
+            <Badge variant="outline">{summary.posted} posted</Badge>
+            <Badge variant="outline">{summary.total - summary.posted} in progress</Badge>
+            {summary.incomplete > 0 && (
+              <Badge variant="destructive">{summary.incomplete} incomplete</Badge>
+            )}
+          </div>
+        )}
       </CardHeader>
+
       <CardContent>
         {!selectedTerm ? (
           <p className="text-sm text-muted-foreground">
@@ -153,26 +223,39 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
               categories={taskAssessmentCategories}
               subjectId={cls.subjectId}
             />
-            <p className="mb-3 text-xs text-muted-foreground">{termLabel(selectedTerm)}</p>
             <div className="overflow-x-auto rounded-lg border border-border">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent bg-muted/30">
                     <TableHead className="w-8" />
                     <TableHead>Student</TableHead>
-                    <TableHead className="text-right">Calculated</TableHead>
-                    <TableHead className="min-w-[5rem]">Submitted %</TableHead>
-                    <TableHead className="min-w-[4rem]">Letter</TableHead>
-                    <TableHead className="min-w-[10rem]">Comment</TableHead>
+                    <TableHead>Progress</TableHead>
+                    <TableHead className="text-right">
+                      <span className="block">Running grade</span>
+                      <span className="text-[10px] font-normal text-muted-foreground">live</span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="block">Posted grade</span>
+                      <span className="text-[10px] font-normal text-muted-foreground">official</span>
+                    </TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="min-w-[9rem]">Comment</TableHead>
+                    {!readOnly && <TableHead className="w-24 text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map(({ student, grade }) => {
-                    const key = `${student.id}:${selectedTermId}`;
-                    const d = getDraft(grade, student.id);
-                    const effective = grade ? effectiveTermPercent(grade) : null;
-                    const effectiveLetter = grade ? effectiveTermLetter(grade) : null;
                     const expanded = expandedStudentId === student.id;
+                    const completion =
+                      selectedTermId &&
+                      computeTermGradeCompletion(
+                        student.id,
+                        cls,
+                        selectedTermId,
+                        classTasks,
+                        studentTaskRecords,
+                        taskAssessmentCategories
+                      );
                     const breakdown =
                       expanded && selectedTermId
                         ? computeTermGradeBreakdown(
@@ -181,21 +264,28 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
                             selectedTermId,
                             classTasks,
                             studentTaskRecords,
-                            taskAssessmentCategories
+                            taskAssessmentCategories,
+                            schoolGradingSettings
                           )
                         : null;
+                    const running = grade ? runningTermPercent(grade) : null;
+                    const runningLetter = grade?.calculatedLetter;
+                    const posted = grade ? officialTermPercent(grade) : null;
+                    const postedLetter = grade ? displayTermLetter(grade, termLetterBands) : null;
+                    const postedStatus = grade && isTermGradePosted(grade);
+                    const incomplete = grade?.calculatedPercent == null && completion && completion.total > 0;
+                    const commentKey = `${student.id}:${selectedTermId}`;
+                    const commentDraft = getCommentDraft(grade, student.id);
 
                     return (
                       <Fragment key={student.id}>
-                        <TableRow>
+                        <TableRow className={cn(postedStatus && "bg-muted/20")}>
                           <TableCell className="px-2">
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              aria-expanded={expanded}
-                              aria-label={expanded ? "Hide breakdown" : "Show breakdown"}
                               onClick={() =>
                                 setExpandedStudentId(expanded ? null : student.id)
                               }
@@ -215,13 +305,25 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
                               {getStudentDisplayName(student)}
                             </Link>
                           </TableCell>
+                          <TableCell>
+                            {completion && completion.total > 0 ? (
+                              <GradeProgressBar
+                                graded={completion.graded}
+                                total={completion.total}
+                              />
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No summative tasks</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right text-sm font-semibold tabular-nums">
-                            {grade?.calculatedPercent != null ? (
+                            {incomplete ? (
+                              <span className="text-muted-foreground">Incomplete</span>
+                            ) : running != null ? (
                               <>
-                                {grade.calculatedPercent}%
-                                {grade.calculatedLetter && (
+                                {running}%
+                                {runningLetter && (
                                   <span className="ml-1 text-xs font-normal text-muted-foreground">
-                                    ({grade.calculatedLetter})
+                                    ({runningLetter})
                                   </span>
                                 )}
                               </>
@@ -229,54 +331,34 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
                               "—"
                             )}
                           </TableCell>
-                          <TableCell>
-                            {readOnly ? (
-                              <span className="text-sm tabular-nums">
-                                {grade?.submittedPercent != null
-                                  ? `${grade.submittedPercent}%`
-                                  : effective != null
-                                    ? `${effective}%`
-                                    : "—"}
-                              </span>
+                          <TableCell className="text-right text-sm tabular-nums">
+                            {postedStatus && posted != null ? (
+                              <>
+                                <span className="font-semibold">{posted}%</span>
+                                {postedLetter && (
+                                  <span className="ml-1 text-xs text-muted-foreground">
+                                    ({postedLetter})
+                                  </span>
+                                )}
+                              </>
                             ) : (
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                className="h-8 w-20 text-center text-xs tabular-nums"
-                                value={d.submittedPercent}
-                                placeholder={
-                                  grade?.calculatedPercent != null
-                                    ? String(grade.calculatedPercent)
-                                    : "—"
-                                }
-                                onChange={(e) =>
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [key]: { ...d, submittedPercent: e.target.value },
-                                  }))
-                                }
-                                onBlur={() => saveRow(student.id, grade)}
-                              />
+                              <span className="text-xs text-muted-foreground">Not posted</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            {readOnly ? (
-                              <span className="text-sm">{effectiveLetter ?? "—"}</span>
+                            {postedStatus ? (
+                              <Badge variant="secondary" className="gap-1 text-[10px]">
+                                <Lock className="h-3 w-3" />
+                                Posted
+                              </Badge>
+                            ) : incomplete ? (
+                              <Badge variant="destructive" className="text-[10px]">
+                                Incomplete
+                              </Badge>
                             ) : (
-                              <Input
-                                className="h-8 w-14 text-center text-xs"
-                                value={d.submittedLetter}
-                                placeholder={grade?.calculatedLetter ?? "—"}
-                                maxLength={3}
-                                onChange={(e) =>
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [key]: { ...d, submittedLetter: e.target.value },
-                                  }))
-                                }
-                                onBlur={() => saveRow(student.id, grade)}
-                              />
+                              <Badge variant="outline" className="text-[10px]">
+                                In progress
+                              </Badge>
                             )}
                           </TableCell>
                           <TableCell>
@@ -288,22 +370,55 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
                               <Textarea
                                 rows={1}
                                 className="min-h-8 resize-none text-xs"
-                                value={d.comment}
+                                value={commentDraft}
                                 placeholder="Report comment…"
                                 onChange={(e) =>
-                                  setDrafts((prev) => ({
+                                  setCommentDrafts((prev) => ({
                                     ...prev,
-                                    [key]: { ...d, comment: e.target.value },
+                                    [commentKey]: e.target.value,
                                   }))
                                 }
-                                onBlur={() => saveRow(student.id, grade)}
+                                onBlur={() => saveComment(student.id, grade)}
                               />
                             )}
                           </TableCell>
+                          {!readOnly && (
+                            <TableCell className="text-right">
+                              {postedStatus ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    unpostTermGradeForStudent(student.id, cls.id, selectedTermId!);
+                                    toast.success("Grade reopened for editing.");
+                                  }}
+                                >
+                                  <Unlock className="mr-1 h-3 w-3" />
+                                  Reopen
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  disabled={running == null}
+                                  onClick={() => {
+                                    postTermGrade(student.id, cls.id, selectedTermId!);
+                                    toast.success("Grade posted.");
+                                  }}
+                                >
+                                  Post
+                                </Button>
+                              )}
+                            </TableCell>
+                          )}
                         </TableRow>
                         {expanded && breakdown && (
                           <TableRow className="bg-muted/10 hover:bg-muted/10">
-                            <TableCell colSpan={6} className="px-4 pb-4 pt-0">
+                            <TableCell colSpan={readOnly ? 7 : 8} className="px-4 pb-4 pt-0">
                               <TermGradeBreakdownPanel
                                 breakdown={breakdown}
                                 classId={cls.id}
@@ -320,6 +435,17 @@ export function ClassTermGradesSection({ cls, readOnly = false }: ClassTermGrade
           </>
         )}
       </CardContent>
+
+      {selectedTermId && (
+        <PostTermGradesDialog
+          open={postDialogOpen}
+          onOpenChange={setPostDialogOpen}
+          cls={cls}
+          termId={selectedTermId}
+          students={classStudents}
+          rows={rows}
+        />
+      )}
     </Card>
   );
 }

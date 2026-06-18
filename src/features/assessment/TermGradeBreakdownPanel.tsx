@@ -12,29 +12,36 @@ export function TermGradeBreakdownPanel({ breakdown, classId }: TermGradeBreakdo
   if (breakdown.categories.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No summative tasks in this term yet. Missing and unscored work counts as 0% once assigned.
+        No summative tasks in this term yet.
       </p>
     );
   }
 
   return (
     <div className="space-y-3 py-2">
-      <p className="text-xs text-muted-foreground">
-        Category averages use equal weight per task. Missing and unscored summative tasks count as 0%.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          {breakdown.gradedTaskCount}/{breakdown.summativeTaskCount} summative tasks graded
+        </span>
+        {breakdown.isIncomplete && (
+          <span className="text-amber-600 dark:text-amber-400">
+            Running grade incomplete — finish grading or adjust policy in settings
+          </span>
+        )}
+      </div>
       {breakdown.categories.map((cat) => (
         <div key={cat.categoryId} className="rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-medium">
               {cat.categoryName}
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {cat.weightPercent}% weight
+                {cat.weightPercent}% of term
               </span>
             </p>
             <p className="text-sm font-semibold tabular-nums">
               {cat.averagePercent != null ? `${cat.averagePercent}%` : "—"}
               <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                ({cat.taskCount} task{cat.taskCount === 1 ? "" : "s"})
+                ({cat.gradedCount}/{cat.taskCount} counted)
               </span>
             </p>
           </div>
@@ -51,13 +58,19 @@ export function TermGradeBreakdownPanel({ breakdown, classId }: TermGradeBreakdo
                   {task.title}
                 </Link>
                 <span className="flex items-center gap-2 tabular-nums">
-                  <span
-                    className={cn(
-                      task.percent === 0 && task.status !== "completed" && "text-destructive"
-                    )}
-                  >
-                    {task.percent}%
-                  </span>
+                  {!task.included ? (
+                    <span className="text-muted-foreground">{task.note ?? "Excluded"}</span>
+                  ) : (
+                    <span
+                      className={cn(
+                        task.percent === 0 &&
+                          task.status !== "completed" &&
+                          "text-destructive"
+                      )}
+                    >
+                      {task.percent != null ? `${task.percent}%` : "—"}
+                    </span>
+                  )}
                   {task.status !== "unassigned" && task.status !== "completed" && (
                     <span className="text-muted-foreground">
                       {studentTaskStatusLabel[task.status]}

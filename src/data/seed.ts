@@ -19,8 +19,10 @@ import {
   seedAcademicTerms,
   seedTaskAssessmentCategories,
 } from "@/data/seedAssessment";
+import { SEED_UNIT_9A_DEV, SEED_UNIT_9A_ALG, SEED_UNIT_9B_LIT } from "@/data/seedUnits";
 
 export { seedAcademicTerms, seedTaskAssessmentCategories };
+export { seedClassUnits } from "@/data/seedUnits";
 
 const SEED_TIME = "2026-05-28T08:00:00.000Z";
 
@@ -35,6 +37,12 @@ const YESTERDAY = offsetDate(-1);
 const TWO_DAYS_AGO = offsetDate(-2);
 const NEXT_WEEK = offsetDate(7);
 const IN_TWO_WEEKS = offsetDate(14);
+
+/** Fixed dates inside seeded academic terms (for report-card demos). */
+const S1_WEEK_4 = "2025-10-08";
+const S1_WEEK_10 = "2025-11-19";
+const S1_WEEK_18 = "2026-01-14";
+const S2_WEEK_2 = "2026-02-10";
 
 function ent<T extends { id: string; createdAt: string; updatedAt: string }>(
   id: string,
@@ -352,6 +360,24 @@ export const seedAttendance: AttendanceRecord[] = [
   ...attForRoster("cls-9a-math", G9A_LARGE, YESTERDAY, "att-9a-y", (i) =>
     i % 8 === 0 ? "late" : "present"
   ),
+  ...attForRoster("cls-9a-math", G9A_LARGE, S1_WEEK_4, "att-9a-s1a", (i) =>
+    i % 12 === 0 ? "absent" : i % 5 === 0 ? "late" : "present"
+  ),
+  ...attForRoster("cls-9a-math", G9A_LARGE, S1_WEEK_10, "att-9a-s1b", (i) =>
+    i % 10 === 0 ? "excused" : i % 6 === 0 ? "late" : "present"
+  ),
+  ...attForRoster("cls-9a-math", G9A_LARGE, S1_WEEK_18, "att-9a-s1c", (i) =>
+    i % 9 === 0 ? "absent" : "present"
+  ),
+  ...attForRoster("cls-9b-eng", G9B_LARGE, S1_WEEK_4, "att-9b-s1a", (i) =>
+    i % 8 === 0 ? "late" : "present"
+  ),
+  ...attForRoster("cls-9b-eng", G9B_LARGE, S1_WEEK_10, "att-9b-s1b", (i) =>
+    i % 11 === 0 ? "absent" : "present"
+  ),
+  ...attForRoster("cls-9b-eng", G9B_LARGE, S2_WEEK_2, "att-9b-s2a", (i) =>
+    i % 7 === 0 ? "late" : "present"
+  ),
   ...attForRoster("cls-10a-sci", G10A_MED, TODAY, "att-10sci-t", (i) =>
     i % 10 === 0 ? "absent" : "present"
   ),
@@ -486,27 +512,42 @@ function buildSeedPointEvents(): PointEvent[] {
     { classId: "cls-9-pullout", roster: G_PULLOUT },
   ];
 
-  const dates = [TODAY, YESTERDAY, TWO_DAYS_AGO];
+  const s1Dates = [S1_WEEK_4, S1_WEEK_10, S1_WEEK_18];
+  const s2Dates = [S2_WEEK_2, TODAY, YESTERDAY, TWO_DAYS_AGO];
+
+  const pushEvent = (
+    studentId: string,
+    classId: string,
+    date: string,
+    i: number,
+    j: number
+  ) => {
+    const useNegative = (i + j) % 9 === 0;
+    const skillId = useNegative
+      ? POINT_SKILLS_NEG[(i + j) % POINT_SKILLS_NEG.length]
+      : POINT_SKILLS_POS[(i + j) % POINT_SKILLS_POS.length];
+    const withNote = (i + j) % 3 === 0;
+    events.push(
+      pt(`pt-${n++}`, {
+        studentId,
+        skillId,
+        classId,
+        date,
+        points: SKILL_POINTS[skillId],
+        ...(withNote ? { note: POINT_EVENT_NOTES[(i + j) % POINT_EVENT_NOTES.length] } : {}),
+      })
+    );
+  };
 
   for (const { classId, roster } of classRosters) {
     roster.forEach((studentId, i) => {
-      const eventCount = 2 + (i % 2);
-      for (let j = 0; j < eventCount; j++) {
-        const useNegative = (i + j) % 9 === 0;
-        const skillId = useNegative
-          ? POINT_SKILLS_NEG[(i + j) % POINT_SKILLS_NEG.length]
-          : POINT_SKILLS_POS[(i + j) % POINT_SKILLS_POS.length];
-        const withNote = (i + j) % 3 === 0;
-        events.push(
-          pt(`pt-${n++}`, {
-            studentId,
-            skillId,
-            classId,
-            date: dates[j % dates.length],
-            points: SKILL_POINTS[skillId],
-            ...(withNote ? { note: POINT_EVENT_NOTES[(i + j) % POINT_EVENT_NOTES.length] } : {}),
-          })
-        );
+      const s1Count = 2 + (i % 2);
+      for (let j = 0; j < s1Count; j++) {
+        pushEvent(studentId, classId, s1Dates[j % s1Dates.length], i, j);
+      }
+      const s2Count = 1 + (i % 2);
+      for (let j = 0; j < s2Count; j++) {
+        pushEvent(studentId, classId, s2Dates[j % s2Dates.length], i, j + 10);
       }
     });
   }
@@ -534,6 +575,7 @@ const RAW_CLASS_TASKS: ClassTask[] = [
     deadline: NEXT_WEEK,
     scoreMode: "points",
     maxScore: 20,
+    unitId: SEED_UNIT_9A_DEV,
   }),
   ent<ClassTask>("task-9a-quiz", {
     classId: "cls-9a-math",
@@ -542,6 +584,9 @@ const RAW_CLASS_TASKS: ClassTask[] = [
     deadline: TODAY,
     scoreMode: "points",
     maxScore: 15,
+    unitId: SEED_UNIT_9A_DEV,
+    publishedToStudents: true,
+    publishedAt: SEED_TIME,
   }),
   ent<ClassTask>("task-9a-hw2", {
     classId: "cls-9a-math",
@@ -551,6 +596,7 @@ const RAW_CLASS_TASKS: ClassTask[] = [
     scoreMode: "points",
     maxScore: 25,
     letterGrades: DEFAULT_LETTERS,
+    unitId: SEED_UNIT_9A_ALG,
   }),
   ent<ClassTask>("task-9a-proj", {
     classId: "cls-9a-math",
@@ -566,6 +612,9 @@ const RAW_CLASS_TASKS: ClassTask[] = [
       { id: "rub-9a-write", label: "Written explanation", maxPoints: 15 },
     ],
     letterGrades: DEFAULT_LETTERS,
+    unitId: SEED_UNIT_9A_ALG,
+    publishedToStudents: true,
+    publishedAt: SEED_TIME,
   }),
   ent<ClassTask>("task-9a-exam", {
     classId: "cls-9a-math",
@@ -574,6 +623,7 @@ const RAW_CLASS_TASKS: ClassTask[] = [
     deadline: NEXT_WEEK,
     scoreMode: "percentage",
     letterGrades: DEFAULT_LETTERS,
+    unitId: SEED_UNIT_9A_ALG,
   }),
   ent<ClassTask>("task-9a-arch", {
     classId: "cls-9a-math",
@@ -595,6 +645,9 @@ const RAW_CLASS_TASKS: ClassTask[] = [
     deadline: IN_TWO_WEEKS,
     scoreMode: "percentage",
     letterGrades: DEFAULT_LETTERS,
+    unitId: SEED_UNIT_9B_LIT,
+    publishedToStudents: true,
+    publishedAt: SEED_TIME,
   }),
   ent<ClassTask>("task-9b-reading", {
     classId: "cls-9b-eng",
@@ -603,6 +656,7 @@ const RAW_CLASS_TASKS: ClassTask[] = [
     deadline: NEXT_WEEK,
     scoreMode: "points",
     maxScore: 10,
+    unitId: SEED_UNIT_9B_LIT,
   }),
   ent<ClassTask>("task-9b-quiz", {
     classId: "cls-9b-eng",
@@ -923,13 +977,14 @@ function seededScores(
   if (task.scoreMode === "rubric" && task.rubric?.length) {
     const criterionScores: Record<string, number> = {};
     let total = 0;
+    const rubricMax = task.rubric.reduce((s, c) => s + (c.maxPoints ?? 0), 0);
     for (const c of task.rubric) {
       const max = c.maxPoints ?? 10;
-      const val = Math.round(max * pct * partial * 10) / 10;
+      const val = Math.min(max, Math.round(max * pct * partial * 10) / 10);
       criterionScores[c.id] = val;
       total += val;
     }
-    const score = Math.round(total * 10) / 10;
+    const score = Math.min(rubricMax, Math.round(total * 10) / 10);
     const max = task.rubric.reduce((s, c) => s + (c.maxPoints ?? 0), 0);
     const letter =
       task.letterGrades?.length && max > 0
@@ -939,7 +994,7 @@ function seededScores(
   }
 
   if (task.scoreMode === "percentage") {
-    const score = Math.round(100 * pct * partial);
+    const score = Math.min(100, Math.round(100 * pct * partial));
     const letter = task.letterGrades?.length
       ? letterForPercent(score, task.letterGrades)
       : null;
@@ -947,7 +1002,7 @@ function seededScores(
   }
 
   const max = task.maxScore ?? 20;
-  const score = Math.round(max * pct * partial * 10) / 10;
+  const score = Math.min(max, Math.round(max * pct * partial * 10) / 10);
   const letter =
     task.letterGrades?.length && max > 0
       ? letterForPercent((score / max) * 100, task.letterGrades)

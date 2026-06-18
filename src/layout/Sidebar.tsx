@@ -9,6 +9,7 @@ import {
   School,
   FileWarning,
   Scale,
+  CircleHelp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -60,8 +61,23 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         ))}
       </nav>
 
-      <div className="border-t border-primary/15 p-4 dark:border-sidebar-border/80">
-        <p className="text-xs font-medium text-muted-foreground">SchoolHub</p>
+      <div className="border-t border-primary/15 p-3 dark:border-sidebar-border/80">
+        <NavLink
+          to="/guide"
+          onClick={() => onNavigate?.()}
+          className={({ isActive }) =>
+            cn(
+              "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+              isActive
+                ? "border border-primary/30 bg-gradient-to-r from-sky-500/12 to-teal-500/8 font-semibold text-primary shadow-sm"
+                : "text-sidebar-foreground hover:bg-white/60 hover:text-foreground dark:hover:bg-muted/80"
+            )
+          }
+        >
+          <CircleHelp className="h-5 w-5 shrink-0" />
+          <span>User guide</span>
+        </NavLink>
+        <p className="mt-2 px-3 text-[10px] text-muted-foreground">SchoolHub documentation</p>
       </div>
     </aside>
   );
