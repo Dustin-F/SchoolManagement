@@ -247,6 +247,7 @@ export function ClassSchedulePanel({ classId, className }: ClassSchedulePanelPro
 
   return (
     <>
+      <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-lg font-semibold tracking-tight">Schedule</h3>
@@ -526,6 +527,7 @@ export function ClassSchedulePanel({ classId, className }: ClassSchedulePanelPro
           )}
         </CardContent>
       </Card>
+      </div>
 
       <ScheduleEventDialog
         open={dialogOpen}
