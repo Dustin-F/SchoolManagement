@@ -10,7 +10,6 @@ import {
   Check,
   X,
   Shield,
-  Sparkles,
   Play,
   Award,
   Archive,
@@ -18,9 +17,6 @@ import {
   MoreHorizontal,
   LayoutGrid,
   ArrowLeft,
-  ClipboardList,
-  BookOpen,
-  Grid3x3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -78,12 +74,8 @@ import { TaskScoreInput, type TaskScoreUpdate } from "@/features/tasks/TaskScore
 import { isRubricMode } from "@/lib/taskScoringUtils";
 import { StudentRosterTable } from "@/features/classes/StudentRosterTable";
 import { ClassTasksSection } from "@/features/classes/ClassTasksSection";
-import { ClassUnitsSection } from "@/features/classes/ClassUnitsSection";
-import { ClassGradebookGrid } from "@/features/assessment/ClassGradebookGrid";
-import { ClassTermGradesSection } from "@/features/assessment/ClassTermGradesSection";
 import { ClassSessionNotesCard } from "@/features/classes/ClassSessionNotesCard";
 import { ClassOverviewTab } from "@/features/classes/ClassOverviewTab";
-import { ClassIncompleteSection, useClassIncompleteCount } from "@/features/classes/ClassIncompleteSection";
 import { SessionStatusBadge } from "@/features/classes/SessionStatusBadge";
 import {
   getEffectiveSessionStatus,
@@ -183,7 +175,6 @@ export function ClassDetailPage() {
   );
 
   const cls = classes.find((c) => c.id === id);
-  const incompleteCount = useClassIncompleteCount(id ?? "");
   const classIsArchived = cls ? isArchived(cls) : false;
 
   const dayOccurrences = useMemo(() => {
@@ -506,28 +497,27 @@ export function ClassDetailPage() {
     setProgressRecord(record);
   };
 
-  type ClassTab = "overview" | "units" | "tasks" | "incomplete" | "gradebook" | "term-grades";
+  type ClassTab = "overview" | "tasks";
 
   const isSessionView = !!(dateParam || eventIdParam);
 
   const classTab: ClassTab = useMemo(() => {
     const tab = searchParams.get("tab");
-    if (tab === "grades") return "term-grades";
-    if (
-      tab === "units" ||
-      tab === "tasks" ||
-      tab === "incomplete" ||
-      tab === "gradebook" ||
-      tab === "term-grades"
-    ) {
-      return tab;
-    }
+    if (tab === "tasks") return "tasks";
     return "overview";
   }, [searchParams]);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "session" || tab === "schedule") {
+    if (
+      tab === "session" ||
+      tab === "schedule" ||
+      tab === "grades" ||
+      tab === "units" ||
+      tab === "incomplete" ||
+      tab === "gradebook" ||
+      tab === "term-grades"
+    ) {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -543,16 +533,6 @@ export function ClassDetailPage() {
           `${window.location.pathname}${window.location.search}#schedule`
         );
       }
-    }
-    if (tab === "grades") {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set("tab", "term-grades");
-          return next;
-        },
-        { replace: true }
-      );
     }
   }, [searchParams, setSearchParams]);
 
@@ -684,12 +664,7 @@ export function ClassDetailPage() {
     );
   }
 
-  const isFocusedTab =
-    classTab === "units" ||
-    classTab === "tasks" ||
-    classTab === "gradebook" ||
-    classTab === "term-grades" ||
-    classTab === "incomplete";
+  const isFocusedTab = classTab === "tasks";
   const sessionStatus = getEffectiveSessionStatus(
     sessionRecord,
     activeOccurrence
@@ -751,10 +726,6 @@ export function ClassDetailPage() {
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <Link to={`/attendance?classId=${cls.id}`} className="hover:text-primary hover:underline">
                   Full attendance page
-                </Link>
-                <span aria-hidden className="text-border">·</span>
-                <Link to={`/points?classId=${cls.id}`} className="hover:text-primary hover:underline">
-                  Points history
                 </Link>
               </div>
             )}
@@ -828,16 +799,6 @@ export function ClassDetailPage() {
         </Button>
         <Button
           type="button"
-          variant={classTab === "units" ? "default" : "ghost"}
-          size="sm"
-          className="h-8 px-4 text-sm"
-          onClick={() => setClassTab("units")}
-        >
-          <BookOpen className="mr-1.5 h-3.5 w-3.5" />
-          Units
-        </Button>
-        <Button
-          type="button"
           variant={classTab === "tasks" ? "default" : "ghost"}
           size="sm"
           className="h-8 px-4 text-sm"
@@ -847,41 +808,6 @@ export function ClassDetailPage() {
           {activeTasksForClass.length > 0 && (
             <span className="ml-1.5 rounded-full bg-background/80 px-1.5 text-xs tabular-nums">
               {activeTasksForClass.length}
-            </span>
-          )}
-        </Button>
-        <Button
-          type="button"
-          variant={classTab === "gradebook" ? "default" : "ghost"}
-          size="sm"
-          className="h-8 px-4 text-sm"
-          onClick={() => setClassTab("gradebook")}
-        >
-          <Grid3x3 className="mr-1.5 h-3.5 w-3.5" />
-          Gradebook
-        </Button>
-        <Button
-          type="button"
-          variant={classTab === "term-grades" ? "default" : "ghost"}
-          size="sm"
-          className="h-8 px-4 text-sm"
-          onClick={() => setClassTab("term-grades")}
-        >
-          <GraduationCap className="mr-1.5 h-3.5 w-3.5" />
-          Term grades
-        </Button>
-        <Button
-          type="button"
-          variant={classTab === "incomplete" ? "default" : "ghost"}
-          size="sm"
-          className="h-8 px-4 text-sm"
-          onClick={() => setClassTab("incomplete")}
-        >
-          <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
-          To-do
-          {incompleteCount > 0 && (
-            <span className="ml-1.5 rounded-full bg-background/80 px-1.5 text-xs tabular-nums">
-              {incompleteCount}
             </span>
           )}
         </Button>
@@ -1006,19 +932,13 @@ export function ClassDetailPage() {
               </Button>
             </span>
           </HintTooltip>
-          <Button asChild type="button" variant="outline">
-            <Link to={`/points?classId=${cls.id}`}>
-              <Sparkles className="mr-1.5 h-4 w-4" />
-              Points history
-            </Link>
-          </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-col gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <HintTooltip content="Seating plan for points and attendance. Drag cards to match your room layout.">
+            <HintTooltip content="Seating plan for attendance. Drag cards to match your room layout.">
               <CardTitle className="flex w-fit items-center gap-2 text-lg">
                 <Users className="h-5 w-5 text-muted-foreground" />
                 Students
@@ -1052,12 +972,6 @@ export function ClassDetailPage() {
                   <Link to={`/attendance?classId=${cls.id}`}>
                     <Clock className="mr-2 h-4 w-4" />
                     Full attendance page
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to={`/points?classId=${cls.id}`}>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Points history
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setAddExistingOpen(true)}>
@@ -1137,9 +1051,7 @@ export function ClassDetailPage() {
         </>
       ) : classTab === "overview" ? (
         <ClassOverviewTab cls={cls} />
-      ) : classTab === "units" ? (
-        <ClassUnitsSection classId={cls.id} readOnly={classIsArchived} />
-      ) : classTab === "tasks" ? (
+      ) : (
         <ClassTasksSection
           classId={cls.id}
           activeTasks={activeTasksForClass}
@@ -1157,12 +1069,6 @@ export function ClassDetailPage() {
           }}
           readOnly={classIsArchived}
         />
-      ) : classTab === "incomplete" ? (
-        <ClassIncompleteSection classId={cls.id} />
-      ) : classTab === "gradebook" ? (
-        <ClassGradebookGrid cls={cls} readOnly={classIsArchived} />
-      ) : (
-        <ClassTermGradesSection cls={cls} readOnly={classIsArchived} />
       )}
 
       <AddExistingStudentDialog

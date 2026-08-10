@@ -66,11 +66,7 @@ const pageTitles: Record<string, string> = {
   "/teachers": "Teachers",
   "/subjects": "Subjects",
   "/attendance": "Attendance",
-  "/points": "Points",
-  "/behaviour": "Points",
-  "/missing-work": "Incomplete & to-do",
-  "/guide": "User guide",
-  "/settings/assessment": "Assessment",
+  "/skills": "Point skills",
 };
 
 interface HeaderProps {

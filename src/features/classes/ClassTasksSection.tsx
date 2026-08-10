@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Archive,
@@ -23,10 +23,6 @@ import {
 import { cn, formatDate, getLocalToday } from "@/lib/utils";
 import type { ClassTask, StudentTaskRecord } from "@/types";
 import { formatTaskListProgress, isTaskOverdue } from "@/lib/taskUtils";
-import { filterTasksByTerm, termLabel } from "@/lib/assessmentUtils";
-import { AssessmentRoleBadge } from "@/features/assessment/AssessmentRoleBadge";
-import { TermFilterSelect } from "@/features/assessment/TermFilterSelect";
-import { useAppStore } from "@/store";
 
 interface ClassTasksSectionProps {
   classId: string;
@@ -52,27 +48,7 @@ export function ClassTasksSection({
   readOnly = false,
 }: ClassTasksSectionProps) {
   const [archivedSectionOpen, setArchivedSectionOpen] = useState(false);
-  const [termFilter, setTermFilter] = useState("all");
-  const academicTerms = useAppStore((s) => s.academicTerms);
-  const taskAssessmentCategories = useAppStore((s) => s.taskAssessmentCategories);
   const todayStr = getLocalToday();
-
-  const categoryName = (categoryId?: string) =>
-    taskAssessmentCategories.find((c) => c.id === categoryId)?.name;
-
-  const termName = (termId?: string) => {
-    const term = academicTerms.find((t) => t.id === termId);
-    return term ? term.name : null;
-  };
-
-  const filteredActive = useMemo(
-    () => filterTasksByTerm(activeTasks, termFilter),
-    [activeTasks, termFilter]
-  );
-  const filteredArchived = useMemo(
-    () => filterTasksByTerm(archivedTasks, termFilter),
-    [archivedTasks, termFilter]
-  );
 
   return (
     <Card id="section-class-tasks" className="scroll-mt-6">
@@ -82,7 +58,7 @@ export function ClassTasksSection({
             <ClipboardList className="h-5 w-5 text-muted-foreground" /> Tasks
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Open a task to mark students one assignment at a time.
+            Create tasks and mark student progress.
           </p>
         </div>
         {!readOnly && (
@@ -94,34 +70,19 @@ export function ClassTasksSection({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {academicTerms.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <TermFilterSelect
-              terms={academicTerms}
-              value={termFilter}
-              onChange={setTermFilter}
-              className="h-8 w-[12rem] text-xs"
-            />
-            {termFilter !== "all" && (
-              <span className="text-xs text-muted-foreground">
-                {termLabel(academicTerms.find((t) => t.id === termFilter)!)}
-              </span>
-            )}
-          </div>
-        )}
-        {filteredActive.length === 0 && filteredArchived.length === 0 ? (
+        {activeTasks.length === 0 && archivedTasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No tasks yet. Create one to start tracking homework and assessments.
+            No tasks yet. Create one to start tracking homework and classwork.
           </p>
-        ) : filteredActive.length === 0 ? (
+        ) : activeTasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No active tasks for this term. Expand archived below or create a new task.
+            No active tasks. Expand archived below or create a new task.
           </p>
         ) : null}
 
-        {filteredActive.length > 0 && (
+        {activeTasks.length > 0 && (
           <div className="space-y-2">
-            {filteredActive.map((task) => {
+            {activeTasks.map((task) => {
               const overdue = isTaskOverdue(task, todayStr);
               const progress = formatTaskListProgress(task, studentTaskRecords, enrolledStudentIds);
 
@@ -136,7 +97,6 @@ export function ClassTasksSection({
                       <Badge variant="outline" className="capitalize text-xs">
                         {task.type}
                       </Badge>
-                      <AssessmentRoleBadge role={task.assessmentRole} />
                       {overdue && (
                         <Badge variant="destructive" className="text-xs">
                           Overdue
@@ -145,10 +105,6 @@ export function ClassTasksSection({
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Due {formatDate(task.deadline)} · {progress}
-                      {termName(task.termId) && <> · {termName(task.termId)}</>}
-                      {task.assessmentRole !== "formative" && categoryName(task.categoryId) && (
-                        <> · {categoryName(task.categoryId)}</>
-                      )}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-1">
@@ -199,7 +155,7 @@ export function ClassTasksSection({
           </div>
         )}
 
-        {filteredArchived.length > 0 && (
+        {archivedTasks.length > 0 && (
           <div className="rounded-lg border border-dashed border-border bg-muted/20">
             <button
               type="button"
@@ -208,7 +164,7 @@ export function ClassTasksSection({
             >
               <span className="flex items-center gap-2">
                 <Archive className="h-4 w-4 text-muted-foreground" />
-                Archived tasks ({filteredArchived.length})
+                Archived tasks ({archivedTasks.length})
               </span>
               <ChevronDown
                 className={cn(
@@ -219,7 +175,7 @@ export function ClassTasksSection({
             </button>
             {archivedSectionOpen && (
               <div className="space-y-2 border-t border-border px-3 py-3">
-                {filteredArchived.map((task) => {
+                {archivedTasks.map((task) => {
                   const progress = formatTaskListProgress(task, studentTaskRecords, enrolledStudentIds);
 
                   return (

@@ -59,14 +59,11 @@ export function ClassFormDialog({ open, onOpenChange, editingClass, onCreated }:
       teacherId: "",
       coTeacherIds: [],
       studentIds: [],
-      seatColumns: 5,
-      seatRows: undefined,
     },
   });
 
   const teacherIdValue = watch("teacherId");
   const subjectIdValue = watch("subjectId");
-  const seatColumnsValue = watch("seatColumns");
 
   useEffect(() => {
     if (editingClass) {
@@ -77,8 +74,6 @@ export function ClassFormDialog({ open, onOpenChange, editingClass, onCreated }:
         teacherId: editingClass.teacherId,
         coTeacherIds: editingClass.coTeacherIds,
         studentIds: editingClass.studentIds,
-        seatColumns: editingClass.seatColumns ?? 5,
-        seatRows: editingClass.seatRows,
       });
       setCoTeacherIds(editingClass.coTeacherIds);
       setStudentIds(editingClass.studentIds);
@@ -90,8 +85,6 @@ export function ClassFormDialog({ open, onOpenChange, editingClass, onCreated }:
         teacherId: "",
         coTeacherIds: [],
         studentIds: [],
-        seatColumns: 5,
-        seatRows: undefined,
       });
       setCoTeacherIds([]);
       setStudentIds([]);
@@ -109,8 +102,9 @@ export function ClassFormDialog({ open, onOpenChange, editingClass, onCreated }:
   const availableCoTeachers = teachers.filter((t) => t.id !== teacherIdValue);
 
   const onSubmit = (data: ClassFormData) => {
+    const { seatColumns: _cols, seatRows: _rows, ...rest } = data;
     const payload = {
-      ...data,
+      ...rest,
       classroomNumber: data.classroomNumber?.trim() || undefined,
     };
     if (editingClass) {
@@ -150,49 +144,6 @@ export function ClassFormDialog({ open, onOpenChange, editingClass, onCreated }:
             </div>
 
             <div className="space-y-2">
-              <Label>Seating columns</Label>
-              <Select
-                value={String(seatColumnsValue ?? 5)}
-                onValueChange={(val) => setValue("seatColumns", Number(val), { shouldValidate: true })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n} columns
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Seating rows</Label>
-              <Select
-                value={watch("seatRows") != null ? String(watch("seatRows")) : "auto"}
-                onValueChange={(val) =>
-                  setValue("seatRows", val === "auto" ? undefined : Number(val), {
-                    shouldValidate: true,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Auto" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Auto (fit students)</SelectItem>
-                  {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n} rows
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
               <Label>Subject</Label>
               <Select value={subjectIdValue} onValueChange={(val) => setValue("subjectId", val, { shouldValidate: true })}>
                 <SelectTrigger><SelectValue placeholder="Select subject" /></SelectTrigger>
@@ -205,7 +156,7 @@ export function ClassFormDialog({ open, onOpenChange, editingClass, onCreated }:
               {errors.subjectId && <p className="text-xs text-destructive">{errors.subjectId.message}</p>}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Main Teacher</Label>
               <Select value={teacherIdValue} onValueChange={(val) => setValue("teacherId", val, { shouldValidate: true })}>
                 <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>

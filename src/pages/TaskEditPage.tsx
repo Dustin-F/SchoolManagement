@@ -21,15 +21,13 @@ import {
 } from "@/components/ui/select";
 import { useAppStore } from "@/store";
 import { classTaskSchema, type ClassTaskFormData } from "@/lib/schemas";
-import { categoriesForSubject, getDefaultTermId, termLabel, categoryLabel } from "@/lib/assessmentUtils";
-import { unitsForClass } from "@/data/seedUnits";
 import { RubricCriteriaEditor } from "@/features/tasks/RubricCriteriaEditor";
 import {
   DEFAULT_LETTER_GRADES,
   scoreModeLabel,
   sortLetterGrades,
 } from "@/lib/taskScoringUtils";
-import type { ClassTaskType, LetterGradeBand, RubricCriterion, TaskAssessmentRole, TaskScoreMode } from "@/types";
+import type { ClassTaskType, LetterGradeBand, RubricCriterion, TaskScoreMode } from "@/types";
 import { cn } from "@/lib/utils";
 
 const taskTypes: ClassTaskType[] = [
@@ -59,20 +57,11 @@ export function TaskEditPage() {
 
   const classes = useAppStore((s) => s.classes);
   const classTasks = useAppStore((s) => s.classTasks);
-  const classUnits = useAppStore((s) => s.classUnits);
-  const academicTerms = useAppStore((s) => s.academicTerms);
-  const taskAssessmentCategories = useAppStore((s) => s.taskAssessmentCategories);
   const addClassTask = useAppStore((s) => s.addClassTask);
   const updateClassTask = useAppStore((s) => s.updateClassTask);
 
   const cls = classes.find((c) => c.id === classId);
   const editingTask = !isNew ? classTasks.find((t) => t.id === taskId) : null;
-  const classCategories = cls
-    ? categoriesForSubject(taskAssessmentCategories, cls.subjectId)
-    : [];
-  const defaultTermId = getDefaultTermId(academicTerms) ?? "";
-  const defaultCategoryId = classCategories[0]?.id ?? "";
-  const unitsForThisClass = cls ? unitsForClass(classUnits, cls.id) : [];
 
   const [rubric, setRubric] = useState<RubricCriterion[]>([]);
   const [letterGrades, setLetterGrades] = useState<LetterGradeBand[]>(DEFAULT_LETTER_GRADES);
@@ -95,19 +84,15 @@ export function TaskEditPage() {
       deadline: "",
       scoreMode: "points",
       maxScore: "",
-      assessmentRole: "summative",
-      termId: defaultTermId,
-      categoryId: defaultCategoryId,
+      assessmentRole: "formative",
+      termId: "",
+      categoryId: "",
       unitId: "",
     },
   });
 
   const typeValue = watch("type");
   const scoreMode = watch("scoreMode");
-  const assessmentRole = watch("assessmentRole");
-  const termIdValue = watch("termId");
-  const categoryIdValue = watch("categoryId");
-  const unitIdValue = watch("unitId");
 
   useEffect(() => {
     if (!cls) return;
@@ -134,9 +119,9 @@ export function TaskEditPage() {
         scoreMode: (mode as string) === "letter" ? "percentage" : mode,
         maxScore:
           editingTask.maxScore != null ? String(editingTask.maxScore) : "",
-        assessmentRole: editingTask.assessmentRole ?? "summative",
-        termId: editingTask.termId ?? defaultTermId,
-        categoryId: editingTask.categoryId ?? defaultCategoryId,
+        assessmentRole: editingTask.assessmentRole ?? "formative",
+        termId: editingTask.termId ?? "",
+        categoryId: editingTask.categoryId ?? "",
         unitId: editingTask.unitId ?? "",
       });
     } else {
@@ -151,13 +136,13 @@ export function TaskEditPage() {
         deadline: "",
         scoreMode: "points",
         maxScore: "",
-        assessmentRole: "summative",
-        termId: defaultTermId,
-        categoryId: defaultCategoryId,
+        assessmentRole: "formative",
+        termId: "",
+        categoryId: "",
         unitId: "",
       });
     }
-  }, [cls, editingTask, isNew, reset, defaultTermId, defaultCategoryId]);
+  }, [cls, editingTask, isNew, reset]);
 
   if (!cls) {
     return (
@@ -313,109 +298,9 @@ export function TaskEditPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Assessment</CardTitle>
-            <CardDescription>
-              Formative tasks are for practice only. Summative tasks count toward term grades using
-              category weights.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select
-                  value={assessmentRole}
-                  onValueChange={(v) =>
-                    setValue("assessmentRole", v as TaskAssessmentRole, { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="formative">Formative (practice)</SelectItem>
-                    <SelectItem value="summative">Summative (counts)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Term</Label>
-                <Select
-                  value={termIdValue}
-                  onValueChange={(v) => setValue("termId", v, { shouldValidate: true })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select term" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {academicTerms.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {termLabel(t)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.termId && (
-                  <p className="text-xs text-destructive">{errors.termId.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select
-                  value={categoryIdValue}
-                  onValueChange={(v) => setValue("categoryId", v, { shouldValidate: true })}
-                  disabled={assessmentRole === "formative"}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {categoryLabel(c)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.categoryId && (
-                  <p className="text-xs text-destructive">{errors.categoryId.message}</p>
-                )}
-              </div>
-            </div>
-            {assessmentRole === "formative" && (
-              <p className="text-xs text-muted-foreground">
-                Formative tasks are tracked but excluded from weighted term grade calculations.
-              </p>
-            )}
-            {unitsForThisClass.length > 0 && (
-              <div className="space-y-2">
-                <Label>Unit (optional)</Label>
-                <Select
-                  value={unitIdValue || "none"}
-                  onValueChange={(v) => setValue("unitId", v === "none" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Link to a curriculum unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No unit</SelectItem>
-                    {unitsForThisClass.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
             <CardTitle>Scoring</CardTitle>
             <CardDescription>
-              Points, percentage, or rubric (criteria add up). Optionally add letter grades on top.
+              Points, percentage, or rubric. Optionally add letter grades.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
