@@ -68,27 +68,22 @@ declare
   ];
 begin
   foreach t in array tables loop
-    execute format('
-      create table if not exists public.%I (
-        user_id uuid not null references auth.users(id) on delete cascade,
-        id text not null,
-        data jsonb not null,
-        updated_at timestamptz not null default now(),
-        primary key (user_id, id)
-      )', t);
-
+    execute format(
+      'create table if not exists public.%I (user_id uuid not null references auth.users(id) on delete cascade, id text not null, data jsonb not null, updated_at timestamptz not null default now(), primary key (user_id, id))',
+      t
+    );
     execute format('alter table public.%I enable row level security', t);
-
     execute format('drop policy if exists %I on public.%I', 'Users read own ' || t, t);
     execute format(
       'create policy %I on public.%I for select to authenticated using (auth.uid() = user_id)',
-      'Users read own ' || t, t
+      'Users read own ' || t,
+      t
     );
-
     execute format('drop policy if exists %I on public.%I', 'Users write own ' || t, t);
     execute format(
       'create policy %I on public.%I for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id)',
-      'Users write own ' || t, t
+      'Users write own ' || t,
+      t
     );
   end loop;
 end $$;

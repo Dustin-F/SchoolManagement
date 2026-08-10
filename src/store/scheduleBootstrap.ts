@@ -6,7 +6,6 @@ import type {
   ClassSessionNote,
   SchoolClass,
 } from "@/types";
-import { seedScheduleEvents, seedSessionExceptions } from "@/data/seedSchedule";
 
 export interface ScheduleBootstrap {
   classes: SchoolClass[];
@@ -27,16 +26,11 @@ export function bootstrapScheduleState(
   let events: ClassScheduleEvent[];
   if (hasLegacySchedule) {
     events = migrateLegacyClassSchedules(rawClasses, [], rawNotes, ts).classScheduleEvents;
-  } else if (storedEvents !== null && storedEvents.length > 0) {
-    events = storedEvents;
   } else {
-    events = seedScheduleEvents;
+    events = storedEvents ?? [];
   }
 
-  const exceptions =
-    storedExceptions && storedExceptions.length > 0
-      ? storedExceptions
-      : seedSessionExceptions;
+  const exceptions = storedExceptions ?? [];
   const migrated = migrateLegacyClassSchedules(rawClasses, events, rawNotes, ts);
 
   storage.set("classes", migrated.classes);
