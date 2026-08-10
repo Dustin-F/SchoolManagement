@@ -15,9 +15,6 @@ import {
 import { formatRecordScore } from "@/lib/taskScoringUtils";
 import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
 import { studentTaskStatusBadgeClass, studentTaskStatusLabel } from "@/lib/studentTaskStatus";
-import { AssessmentRoleBadge } from "@/features/assessment/AssessmentRoleBadge";
-import { TermFilterSelect } from "@/features/assessment/TermFilterSelect";
-import { useAppStore } from "@/store";
 import type { ClassTask, SchoolClass, StudentTaskRecord } from "@/types";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -39,20 +36,9 @@ export function StudentTasksSection({
   onSelectTask,
 }: StudentTasksSectionProps) {
   const [archivedOpen, setArchivedOpen] = useState(false);
-  const [termFilter, setTermFilter] = useState("all");
-  const academicTerms = useAppStore((s) => s.academicTerms);
 
-  const termFilteredRows = useMemo(
-    () =>
-      taskRows.filter((r) => {
-        if (termFilter === "all") return true;
-        return r.task.termId === termFilter;
-      }),
-    [taskRows, termFilter]
-  );
-
-  const activeRows = useMemo(() => termFilteredRows.filter((r) => !r.task.archived), [termFilteredRows]);
-  const archivedRows = useMemo(() => termFilteredRows.filter((r) => r.task.archived), [termFilteredRows]);
+  const activeRows = useMemo(() => taskRows.filter((r) => !r.task.archived), [taskRows]);
+  const archivedRows = useMemo(() => taskRows.filter((r) => r.task.archived), [taskRows]);
 
   const summary = useMemo(() => {
     const missing = activeRows.filter((r) => r.record.status === "missing").length;
@@ -125,24 +111,12 @@ export function StudentTasksSection({
             ? "Click a row to view or update this student’s work on that task."
             : "Summary only — open a class task to grade or update status."}
         </p>
-        {academicTerms.length > 0 && (
-          <TermFilterSelect
-            terms={academicTerms}
-            value={termFilter}
-            onChange={setTermFilter}
-            className="mt-2 h-8 w-[12rem] text-xs"
-          />
-        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {sortedActive.length === 0 ? (
           <p className="text-sm text-muted-foreground">No active assignments.</p>
         ) : (
-          <TaskTable
-            rows={sortedActive}
-            todayStr={todayStr}
-            onSelectTask={onSelectTask}
-          />
+          <TaskTable rows={sortedActive} todayStr={todayStr} onSelectTask={onSelectTask} />
         )}
 
         {sortedArchived.length > 0 && (
@@ -241,7 +215,6 @@ function TaskTable({
                       Overdue
                     </Badge>
                   )}
-                  <AssessmentRoleBadge role={task.assessmentRole} />
                 </TableCell>
                 <TableCell className="text-xs tabular-nums">{formatDate(task.deadline)}</TableCell>
                 <TableCell>

@@ -69,21 +69,12 @@ export function useBreadcrumbCrumbs(): BreadcrumbCrumb[] | null {
       ];
     }
 
-    if (cls && basePath === "/points") {
-      const tab = searchParams.get("tab");
-      const crumbs: BreadcrumbCrumb[] = [
+    if (cls && basePath === "/skills") {
+      return [
         { label: "Classes", href: "/classes" },
         { label: cls.name, href: `/classes/${cls.id}` },
+        { label: "Point skills" },
       ];
-
-      if (tab === "skills" || tab === "reports") {
-        crumbs.push({ label: "Points", href: `/points?classId=${cls.id}` });
-        crumbs.push({ label: tab === "skills" ? "Skills" : "Reports" });
-      } else {
-        crumbs.push({ label: "Points" });
-      }
-
-      return crumbs;
     }
 
     return null;
