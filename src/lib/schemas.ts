@@ -179,9 +179,9 @@ export const classTaskSchema = z.object({
   maxScore: z.string().optional(),
   letterGrades: z.array(letterGradeBandSchema).optional(),
   rubric: z.array(rubricCriterionSchema).optional(),
-  assessmentRole: z.enum(["formative", "summative"]),
-  termId: z.string().min(1, "Term is required"),
-  categoryId: z.string().min(1, "Category is required"),
+  assessmentRole: z.enum(["formative", "summative"]).optional(),
+  termId: z.string().optional(),
+  categoryId: z.string().optional(),
   unitId: z.string().optional(),
 });
 export type ClassTaskFormData = z.infer<typeof classTaskSchema>;

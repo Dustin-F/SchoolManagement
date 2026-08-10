@@ -5,11 +5,8 @@ import {
   GraduationCap,
   BookOpen,
   ClipboardList,
-  Sparkles,
   School,
-  FileWarning,
-  Scale,
-  CircleHelp,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,9 +17,7 @@ const navItems = [
   { to: "/teachers", label: "Teachers", icon: GraduationCap },
   { to: "/subjects", label: "Subjects", icon: BookOpen },
   { to: "/attendance", label: "Attendance", icon: ClipboardList },
-  { to: "/missing-work", label: "Incomplete & to-do", icon: FileWarning },
-  { to: "/settings/assessment", label: "Assessment", icon: Scale },
-  { to: "/points", label: "Points", icon: Sparkles },
+  { to: "/skills", label: "Point skills", icon: Sparkles },
 ];
 
 interface SidebarProps {
@@ -60,25 +55,6 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           </NavLink>
         ))}
       </nav>
-
-      <div className="border-t border-primary/15 p-3 dark:border-sidebar-border/80">
-        <NavLink
-          to="/guide"
-          onClick={() => onNavigate?.()}
-          className={({ isActive }) =>
-            cn(
-              "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-              isActive
-                ? "border border-primary/30 bg-gradient-to-r from-sky-500/12 to-teal-500/8 font-semibold text-primary shadow-sm"
-                : "text-sidebar-foreground hover:bg-white/60 hover:text-foreground dark:hover:bg-muted/80"
-            )
-          }
-        >
-          <CircleHelp className="h-5 w-5 shrink-0" />
-          <span>User guide</span>
-        </NavLink>
-        <p className="mt-2 px-3 text-[10px] text-muted-foreground">SchoolHub documentation</p>
-      </div>
     </aside>
   );
 }

@@ -1,11 +1,10 @@
 import { Link } from "react-router-dom";
-import { Users, School, GraduationCap, BookOpen, ClipboardList, Sparkles, Plus } from "lucide-react";
+import { Users, School, GraduationCap, BookOpen, ClipboardList, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/store";
 import { activeClasses, activeStudents } from "@/lib/archiveUtils";
 import { DashboardCalendar } from "@/features/dashboard/DashboardCalendar";
-import { DashboardIncompleteCard } from "@/features/dashboard/DashboardIncompleteCard";
 import { TodaysLessonsCard } from "@/features/dashboard/TodaysLessonsCard";
 import { cn, getLocalToday } from "@/lib/utils";
 
@@ -84,7 +83,6 @@ export function DashboardPage() {
   const subjects = useAppStore((s) => s.subjects);
   const classScheduleEvents = useAppStore((s) => s.classScheduleEvents);
   const classSessionExceptions = useAppStore((s) => s.classSessionExceptions);
-  const pointEvents = useAppStore((s) => s.pointEvents);
   const attendance = useAppStore((s) => s.attendance);
 
   const todayStr = getLocalToday();
@@ -92,10 +90,6 @@ export function DashboardPage() {
   const presentCount = todayAttendance.filter((a) => a.status === "present").length;
   const absentCount = todayAttendance.filter((a) => a.status === "absent").length;
   const lateCount = todayAttendance.filter((a) => a.status === "late").length;
-  const todayPointsCount = pointEvents.filter((e) => e.date === todayStr).length;
-  const todayPointsNet = pointEvents
-    .filter((e) => e.date === todayStr)
-    .reduce((sum, e) => sum + e.points, 0);
 
   const counts = {
     students: activeStudents(students).length,
@@ -108,7 +102,6 @@ export function DashboardPage() {
     counts.students === 0 && counts.classes === 0 && counts.teachers === 0 && counts.subjects === 0;
 
   const attendanceLink = `/attendance?date=${todayStr}`;
-  const pointsLink = `/points`;
 
   return (
     <div className="space-y-6">
@@ -166,11 +159,11 @@ export function DashboardPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-primary" />
-            Today at a glance
+            Today&apos;s attendance
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Link
               to={attendanceLink}
               className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 p-3 text-center transition-colors hover:border-emerald-500/40"
@@ -198,23 +191,9 @@ export function DashboardPage() {
               </div>
               <div className="text-xs font-medium text-amber-700/80 dark:text-amber-400">Late</div>
             </Link>
-            <Link
-              to={pointsLink}
-              className="rounded-xl border border-sky-500/20 bg-gradient-to-br from-sky-500/12 to-teal-500/8 p-3 text-center transition-colors hover:border-sky-500/40"
-            >
-              <div className="flex items-center justify-center gap-1 text-2xl font-extrabold text-sky-700 dark:text-sky-300">
-                <Sparkles className="h-5 w-5" />
-                {todayPointsNet > 0 ? `+${todayPointsNet}` : todayPointsNet}
-              </div>
-              <div className="text-xs font-medium text-sky-800/80 dark:text-sky-400">
-                {todayPointsCount} point{todayPointsCount !== 1 ? "s" : ""} today
-              </div>
-            </Link>
           </div>
         </CardContent>
       </Card>
-
-      <DashboardIncompleteCard />
 
       <TodaysLessonsCard />
 

@@ -29,7 +29,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { StudentFormDialog } from "@/features/students/StudentFormDialog";
 import { StudentTasksSection } from "@/features/students/StudentTasksSection";
-import { StudentTermGradesCard } from "@/features/students/StudentTermGradesCard";
 import { TaskProgressDialog } from "@/features/tasks/TaskProgressDialog";
 import {
   Table,
@@ -265,8 +264,6 @@ export function StudentDetailPage() {
           </CardContent>
         </Card>
       </div>
-
-      <StudentTermGradesCard studentId={student.id} enrolledClasses={enrolledClasses} />
 
       <StudentTasksSection
         taskRows={taskRows}
