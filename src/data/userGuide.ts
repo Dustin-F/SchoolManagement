@@ -24,7 +24,7 @@ export const USER_GUIDE_SECTIONS: GuideSection[] = [
     steps: [
       {
         title: "Sign in",
-        body: "Open SchoolHub in your browser and sign in with your email and password on the auth screen. Your data syncs to the cloud when connected — check the sync indicator in the header (green = synced, amber = pending, red = error). If you are evaluating the app, open the header settings menu (gear icon) and choose Load demo data to populate sample students, classes, tasks, and grades.",
+        body: "Open SchoolHub in your browser and sign in with your email and password on the auth screen. Your data syncs to the cloud when connected — check the sync indicator in the header (green = synced, amber = pending, red = error). New accounts start empty. To try sample data, open the header settings menu (gear icon) and choose Load demo data.",
       },
       {
         title: "Understand the layout",
@@ -572,7 +572,7 @@ export const USER_GUIDE_SECTIONS: GuideSection[] = [
       },
       {
         title: "Load demo data",
-        body: "Settings menu → Load demo data. Resets to the built-in sample school with classes, students, tasks, and grades. Useful for training or testing report cards without entering real data.",
+        body: "Settings menu → Load demo data. Replaces your current school with the built-in sample (classes, students, tasks, grades). Optional — new accounts start empty and demo is never loaded automatically.",
       },
       {
         title: "Theme",

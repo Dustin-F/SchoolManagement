@@ -117,3 +117,32 @@ export function applyFreshSeedToStorage(bootTs?: string): FreshSeedState {
   markSeedVersionApplied();
   return state;
 }
+
+export function buildEmptySchoolState(): FreshSeedState {
+  return {
+    teachers: [],
+    students: [],
+    classes: [],
+    subjects: [],
+    attendance: [],
+    behaviourSkills: [],
+    pointEvents: [],
+    classTasks: [],
+    classUnits: [],
+    studentTaskRecords: [],
+    classSessionNotes: [],
+    classScheduleEvents: [],
+    classSessionExceptions: [],
+    academicTerms: [],
+    taskAssessmentCategories: [],
+    termGrades: [],
+    schoolGradingSettings: [],
+  };
+}
+
+export function applyEmptySchoolToStorage(): FreshSeedState {
+  const state = buildEmptySchoolState();
+  writeSeedToStorage(state);
+  markSeedVersionApplied();
+  return state;
+}

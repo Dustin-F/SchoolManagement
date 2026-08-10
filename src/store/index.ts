@@ -19,26 +19,10 @@ import type {
   TaskAssessmentCategory,
   TermGrade,
   ScheduleEditScope,
-  AppData,
   SchoolGradingSettings,
   MissingGradePolicy,
   LetterGradeBand,
 } from "@/types";
-import {
-  seedTeachers,
-  seedStudents,
-  seedClasses,
-  seedSubjects,
-  seedAttendance,
-  seedBehaviourSkills,
-  seedPointEvents,
-  seedClassTasks,
-  seedStudentTaskRecords,
-  seedClassSessionNotes,
-  seedAcademicTerms,
-  seedTaskAssessmentCategories,
-  seedTermGrades,
-} from "@/data/seed";
 import {
   newRecordsForTask,
   removeRecordsForTask,
@@ -69,11 +53,9 @@ import {
   recalcForClassStudent,
   recalcTermGradesForClassTerm,
 } from "@/store/termGradeSync";
-import { seedSchoolGradingSettings } from "@/data/seedAssessment";
-import { seedClassUnits } from "@/data/seedUnits";
 import {
   applyFreshSeedToStorage,
-  isSeedVersionStale,
+  applyEmptySchoolToStorage,
 } from "@/data/seedBootstrap";
 import { bootstrapScheduleState } from "@/store/scheduleBootstrap";
 import { applyScheduleEdit } from "@/lib/scheduleEditUtils";
@@ -90,28 +72,22 @@ function normalizeBehaviourSkills(skills: BehaviourSkill[]): BehaviourSkill[] {
   );
 }
 
-function loadOrSeed<T>(key: string, seed: T[]): T[] {
+/** Load from memory/cloud cache, or start empty (demo data is opt-in via resetToSeed). */
+function loadOrEmpty<T>(key: string): T[] {
   const stored = storage.get<T[]>(key);
   if (stored !== null) return stored;
-  storage.set(key, seed);
-  return seed;
-}
-
-/** Re-seed when local storage has an empty array (e.g. feature added after first visit). */
-function loadOrSeedIfEmpty<T>(key: string, seed: T[]): T[] {
-  const stored = storage.get<T[]>(key);
-  if (stored !== null && stored.length > 0) return stored;
-  storage.set(key, seed);
-  return seed;
+  const empty: T[] = [];
+  storage.set(key, empty);
+  return empty;
 }
 
 function timestamp() {
   return new Date().toISOString();
 }
 
-/** Prefer cloud data when present; empty cloud arrays keep local seed/demo data. */
+/** Prefer cloud data when the key was loaded (including empty arrays after a clear). */
 function mergeCloudCollection<T>(cloud: T[] | undefined, local: T[]): T[] {
-  if (cloud !== undefined && cloud.length > 0) return cloud;
+  if (cloud !== undefined) return cloud;
   return local;
 }
 
@@ -270,6 +246,7 @@ interface AppStore {
     schoolGradingSettings: SchoolGradingSettings[];
   }>) => void;
   resetToSeed: () => void;
+  clearSchoolData: () => void;
 }
 
 function createCrudActions<T extends { id: string }>(
@@ -318,43 +295,33 @@ export const useAppStore = create<AppStore>((set) => {
   const termCrud = createCrudActions<AcademicTerm>("academicTerms", set, (s) => s.academicTerms);
 
   const bootTs = timestamp();
-  if (typeof window !== "undefined" && isSeedVersionStale()) {
-    applyFreshSeedToStorage(bootTs);
-  }
-
-  const loadedTerms = loadOrSeed("academicTerms", seedAcademicTerms);
-  const rawClasses = loadOrSeed("classes", seedClasses);
-  const rawNotes = loadOrSeed("classSessionNotes", seedClassSessionNotes);
+  const loadedTerms = loadOrEmpty<AcademicTerm>("academicTerms");
+  const rawClasses = loadOrEmpty<SchoolClass>("classes");
+  const rawNotes = loadOrEmpty<ClassSessionNote>("classSessionNotes");
   const scheduleBoot = bootstrapScheduleState(rawClasses, rawNotes, bootTs);
 
   return {
-    teachers: migratePeople(loadOrSeed("teachers", seedTeachers)),
-    students: migratePeople(loadOrSeed("students", seedStudents)),
+    teachers: migratePeople(loadOrEmpty<Teacher>("teachers")),
+    students: migratePeople(loadOrEmpty<Student>("students")),
     classes: scheduleBoot.classes,
-    subjects: loadOrSeed("subjects", seedSubjects),
-    attendance: loadOrSeed("attendance", seedAttendance),
-    behaviourSkills: normalizeBehaviourSkills(
-      loadOrSeedIfEmpty("behaviourSkills", seedBehaviourSkills)
-    ),
-    pointEvents: loadOrSeedIfEmpty("pointEvents", seedPointEvents),
+    subjects: loadOrEmpty<Subject>("subjects"),
+    attendance: loadOrEmpty<AttendanceRecord>("attendance"),
+    behaviourSkills: normalizeBehaviourSkills(loadOrEmpty<BehaviourSkill>("behaviourSkills")),
+    pointEvents: loadOrEmpty<PointEvent>("pointEvents"),
     classTasks: normalizeClassTasksWithTerms(
-      loadOrSeed("classTasks", seedClassTasks),
+      loadOrEmpty<ClassTask>("classTasks"),
       loadedTerms
     ),
-    classUnits: loadOrSeedIfEmpty("classUnits", seedClassUnits),
-    studentTaskRecords: loadOrSeed("studentTaskRecords", seedStudentTaskRecords),
+    classUnits: loadOrEmpty<ClassUnit>("classUnits"),
+    studentTaskRecords: loadOrEmpty<StudentTaskRecord>("studentTaskRecords"),
     classSessionNotes: scheduleBoot.classSessionNotes,
     classScheduleEvents: scheduleBoot.classScheduleEvents,
     classSessionExceptions: scheduleBoot.classSessionExceptions,
     academicTerms: loadedTerms,
-    taskAssessmentCategories: loadOrSeed(
-      "taskAssessmentCategories",
-      seedTaskAssessmentCategories
-    ),
-    termGrades: loadOrSeed("termGrades", seedTermGrades),
-    schoolGradingSettings: loadOrSeedIfEmpty(
-      "schoolGradingSettings",
-      normalizeSchoolGradingSettings(seedSchoolGradingSettings)
+    taskAssessmentCategories: loadOrEmpty<TaskAssessmentCategory>("taskAssessmentCategories"),
+    termGrades: loadOrEmpty<TermGrade>("termGrades"),
+    schoolGradingSettings: normalizeSchoolGradingSettings(
+      loadOrEmpty<SchoolGradingSettings>("schoolGradingSettings")
     ),
 
     addTeacher: teacherCrud.add,
@@ -1327,26 +1294,17 @@ export const useAppStore = create<AppStore>((set) => {
           ),
         };
 
-        // Keep in-memory storage aligned when we kept local seed over empty cloud tables.
-        (Object.keys(payload) as (keyof AppData)[]).forEach((key) => {
-          const cloudValue = payload[key];
-          const merged = next[key as keyof typeof next];
-          if (
-            Array.isArray(cloudValue) &&
-            cloudValue.length === 0 &&
-            Array.isArray(merged) &&
-            merged.length > 0
-          ) {
-            storage.set(key, merged);
-          }
-        });
-
         return next;
       });
     },
 
     resetToSeed: () => {
       const next = applyFreshSeedToStorage(timestamp());
+      set(next);
+    },
+
+    clearSchoolData: () => {
+      const next = applyEmptySchoolToStorage();
       set(next);
     },
   };
