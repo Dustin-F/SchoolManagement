@@ -19,7 +19,6 @@ import type {
   TaskAssessmentCategory,
   TermGrade,
   ScheduleEditScope,
-  AppData,
   SchoolGradingSettings,
   MissingGradePolicy,
   LetterGradeBand,
@@ -73,6 +72,7 @@ import { seedSchoolGradingSettings } from "@/data/seedAssessment";
 import { seedClassUnits } from "@/data/seedUnits";
 import {
   applyFreshSeedToStorage,
+  applyEmptySchoolToStorage,
   isSeedVersionStale,
 } from "@/data/seedBootstrap";
 import { bootstrapScheduleState } from "@/store/scheduleBootstrap";
@@ -109,9 +109,9 @@ function timestamp() {
   return new Date().toISOString();
 }
 
-/** Prefer cloud data when present; empty cloud arrays keep local seed/demo data. */
+/** Prefer cloud data when the key was loaded (including empty arrays after a clear). */
 function mergeCloudCollection<T>(cloud: T[] | undefined, local: T[]): T[] {
-  if (cloud !== undefined && cloud.length > 0) return cloud;
+  if (cloud !== undefined) return cloud;
   return local;
 }
 
@@ -270,6 +270,7 @@ interface AppStore {
     schoolGradingSettings: SchoolGradingSettings[];
   }>) => void;
   resetToSeed: () => void;
+  clearSchoolData: () => void;
 }
 
 function createCrudActions<T extends { id: string }>(
@@ -1327,26 +1328,17 @@ export const useAppStore = create<AppStore>((set) => {
           ),
         };
 
-        // Keep in-memory storage aligned when we kept local seed over empty cloud tables.
-        (Object.keys(payload) as (keyof AppData)[]).forEach((key) => {
-          const cloudValue = payload[key];
-          const merged = next[key as keyof typeof next];
-          if (
-            Array.isArray(cloudValue) &&
-            cloudValue.length === 0 &&
-            Array.isArray(merged) &&
-            merged.length > 0
-          ) {
-            storage.set(key, merged);
-          }
-        });
-
         return next;
       });
     },
 
     resetToSeed: () => {
       const next = applyFreshSeedToStorage(timestamp());
+      set(next);
+    },
+
+    clearSchoolData: () => {
+      const next = applyEmptySchoolToStorage();
       set(next);
     },
   };

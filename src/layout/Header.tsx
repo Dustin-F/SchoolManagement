@@ -12,9 +12,12 @@ import {
   Moon,
   Settings,
   Sun,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +57,7 @@ import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store";
 
 const THEME_STORAGE_KEY = "schoolhub-theme";
+const CLEAR_SCHOOL_CONFIRM_WORD = "DELETE";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -80,7 +84,11 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [syncError, setSyncError] = useState(getLastSyncError());
   const [tableHealth, setTableHealth] = useState(getTableSyncHealth);
   const [demoDialogOpen, setDemoDialogOpen] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState("");
+  const [clearing, setClearing] = useState(false);
   const resetToSeed = useAppStore((s) => s.resetToSeed);
+  const clearSchoolData = useAppStore((s) => s.clearSchoolData);
   const hydrateFromCloud = useAppStore((s) => s.hydrateFromCloud);
   const [pendingCount, setPendingCount] = useState(getPendingSyncCount());
 
@@ -151,6 +159,24 @@ export function Header({ onMenuClick }: HeaderProps) {
       toast.success("Demo data loaded.");
     } catch {
       toast.success("Demo data loaded locally. Cloud sync will retry shortly.");
+    }
+  };
+
+  const handleClearSchoolData = async () => {
+    if (clearConfirmText.trim().toUpperCase() !== CLEAR_SCHOOL_CONFIRM_WORD) return;
+    setClearing(true);
+    try {
+      clearSchoolData();
+      await flushCloudPersist();
+      setClearDialogOpen(false);
+      setClearConfirmText("");
+      toast.success("School data cleared.");
+    } catch {
+      setClearDialogOpen(false);
+      setClearConfirmText("");
+      toast.success("School data cleared locally. Cloud sync will retry shortly.");
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -335,6 +361,16 @@ export function Header({ onMenuClick }: HeaderProps) {
               <Database className="mr-2 h-4 w-4" />
               Load demo data
             </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => {
+                setClearConfirmText("");
+                setClearDialogOpen(true);
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear school data
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleExportBackup}>
               <Download className="mr-2 h-4 w-4" />
               Export school backup
@@ -364,6 +400,51 @@ export function Header({ onMenuClick }: HeaderProps) {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={handleLoadDemoData}>Load demo data</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={clearDialogOpen}
+          onOpenChange={(open) => {
+            setClearDialogOpen(open);
+            if (!open) setClearConfirmText("");
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clear all school data?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently deletes teachers, students, classes, attendance, points, tasks,
+                grades, schedule, and settings for your account in the cloud. This cannot be undone
+                unless you have a backup. Type{" "}
+                <span className="font-semibold text-foreground">{CLEAR_SCHOOL_CONFIRM_WORD}</span> to
+                confirm.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="clear-school-confirm">Confirmation</Label>
+              <Input
+                id="clear-school-confirm"
+                value={clearConfirmText}
+                onChange={(e) => setClearConfirmText(e.target.value)}
+                placeholder={`Type ${CLEAR_SCHOOL_CONFIRM_WORD}`}
+                autoComplete="off"
+                disabled={clearing}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={clearing}>Cancel</AlertDialogCancel>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={
+                  clearing || clearConfirmText.trim().toUpperCase() !== CLEAR_SCHOOL_CONFIRM_WORD
+                }
+                onClick={() => void handleClearSchoolData()}
+              >
+                {clearing ? "Clearing…" : "Clear school data"}
+              </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

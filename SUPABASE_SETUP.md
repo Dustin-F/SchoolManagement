@@ -1,6 +1,6 @@
 # Supabase setup
 
-This app now uses Supabase Auth + cloud persistence (no localStorage data store).
+This app uses Supabase Auth + cloud persistence (no localStorage data store).
 
 ## 1) Environment variables
 
@@ -15,131 +15,94 @@ Set:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
-## 2) Required normalized tables
+## 2) Required tables (V2)
 
-Run this SQL in Supabase SQL editor:
+The app syncs **17** normalized `app_*` tables. Each row is `(user_id, id, data jsonb, updated_at)`.
+
+| Table | Stores |
+| --- | --- |
+| `app_teachers` | Teachers |
+| `app_students` | Students |
+| `app_classes` | Classes |
+| `app_subjects` | Subjects |
+| `app_attendance` | Attendance |
+| `app_behaviour_skills` | Point / behaviour skills |
+| `app_point_events` | Point awards |
+| `app_class_tasks` | Class tasks |
+| `app_class_units` | Unit planner |
+| `app_student_task_records` | Task scores / status |
+| `app_class_session_notes` | Lesson notes |
+| `app_class_schedule_events` | Class schedule rules |
+| `app_class_session_exceptions` | Schedule exceptions |
+| `app_academic_terms` | Academic terms |
+| `app_task_assessment_categories` | Assessment categories |
+| `app_term_grades` | Posted term grades |
+| `app_school_grading_settings` | School grading settings |
+
+### Paste-ready SQL (fresh install or upgrade)
+
+Safe to re-run: creates missing tables, enables RLS, and recreates policies.
 
 ```sql
-create table if not exists public.app_teachers (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
+do $$
+declare
+  t text;
+  tables text[] := array[
+    'app_teachers',
+    'app_students',
+    'app_classes',
+    'app_subjects',
+    'app_attendance',
+    'app_behaviour_skills',
+    'app_point_events',
+    'app_class_tasks',
+    'app_class_units',
+    'app_student_task_records',
+    'app_class_session_notes',
+    'app_class_schedule_events',
+    'app_class_session_exceptions',
+    'app_academic_terms',
+    'app_task_assessment_categories',
+    'app_term_grades',
+    'app_school_grading_settings'
+  ];
+begin
+  foreach t in array tables loop
+    execute format('
+      create table if not exists public.%I (
+        user_id uuid not null references auth.users(id) on delete cascade,
+        id text not null,
+        data jsonb not null,
+        updated_at timestamptz not null default now(),
+        primary key (user_id, id)
+      )', t);
 
-create table if not exists public.app_students (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
+    execute format('alter table public.%I enable row level security', t);
 
-create table if not exists public.app_classes (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
+    execute format('drop policy if exists %I on public.%I', 'Users read own ' || t, t);
+    execute format(
+      'create policy %I on public.%I for select to authenticated using (auth.uid() = user_id)',
+      'Users read own ' || t, t
+    );
 
-create table if not exists public.app_subjects (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
+    execute format('drop policy if exists %I on public.%I', 'Users write own ' || t, t);
+    execute format(
+      'create policy %I on public.%I for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id)',
+      'Users write own ' || t, t
+    );
+  end loop;
+end $$;
+```
 
-create table if not exists public.app_attendance (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
+### Already set up from an older version?
 
-create table if not exists public.app_behaviour_skills (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
+You do **not** need to wipe data. Re-run the SQL above — existing tables stay; only missing V2 tables are created (units, schedule, terms, term grades, grading settings, etc.).
 
-create table if not exists public.app_point_events (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
+Optional cleanup if you still have a legacy `app_behaviour` table from before points skills:
 
-create table if not exists public.app_class_tasks (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
-
-create table if not exists public.app_student_task_records (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
-
-create table if not exists public.app_class_session_notes (
-  user_id uuid not null references auth.users(id) on delete cascade,
-  id text not null,
-  data jsonb not null,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
-
-alter table public.app_teachers enable row level security;
-alter table public.app_students enable row level security;
-alter table public.app_classes enable row level security;
-alter table public.app_subjects enable row level security;
-alter table public.app_attendance enable row level security;
-alter table public.app_behaviour_skills enable row level security;
-alter table public.app_point_events enable row level security;
-alter table public.app_class_tasks enable row level security;
-alter table public.app_student_task_records enable row level security;
-alter table public.app_class_session_notes enable row level security;
-
-create policy "Users read own app_teachers" on public.app_teachers for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_teachers" on public.app_teachers for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_students" on public.app_students for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_students" on public.app_students for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_classes" on public.app_classes for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_classes" on public.app_classes for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_subjects" on public.app_subjects for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_subjects" on public.app_subjects for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_attendance" on public.app_attendance for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_attendance" on public.app_attendance for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_behaviour_skills" on public.app_behaviour_skills for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_behaviour_skills" on public.app_behaviour_skills for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_point_events" on public.app_point_events for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_point_events" on public.app_point_events for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_class_tasks" on public.app_class_tasks for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_class_tasks" on public.app_class_tasks for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_student_task_records" on public.app_student_task_records for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_student_task_records" on public.app_student_task_records for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "Users read own app_class_session_notes" on public.app_class_session_notes for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_class_session_notes" on public.app_class_session_notes for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```sql
+-- Only after confirming the app no longer uses it:
+-- drop table if exists public.app_behaviour;
 ```
 
 ## 3) Auth
@@ -153,19 +116,18 @@ The app includes:
 - forgot password email flow
 - sign out
 
-All app data is stored per signed-in user across normalized `app_*` tables.
+All app data is stored per signed-in user across the `app_*` tables above.
 
 ## 4) Troubleshooting sync errors
 
 If the header shows **Sync error (`app_...`)**, it is almost always a Supabase setup issue:
 
-1. **Missing table** — You must create **all 10** tables from section 2 (`app_teachers` through `app_class_session_notes`, including `app_behaviour_skills` and `app_point_events`). If you only created `app_data` or a subset, sync will fail on the missing table name shown in the header (hover for full message).
-2. **Missing RLS policies** — Re-run the `enable row level security` and `create policy` statements for every table.
-3. **Not signed in** — Data only syncs for authenticated users. Confirm you are logged in.
+1. **Missing table** — Create **all 17** tables from section 2. Re-run the paste-ready SQL. The error name in the header is the missing table.
+2. **Missing RLS policies** — Re-run the same SQL (it recreates policies).
+3. **Not signed in** — Data only syncs for authenticated users.
 4. **Wrong `.env`** — `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` must match your project (Project Settings → API).
-5. **Email not confirmed** — Unconfirmed accounts cannot use the API reliably; confirm email in Supabase Auth → Users.
+5. **Email not confirmed** — Confirm the user in Supabase Auth → Users if confirmation is required.
 
 **Check in browser:** Open DevTools (F12) → Console. Look for `Cloud sync failed (app_...)` with the exact Postgres/Supabase message.
 
-**Verify in Supabase:** Table Editor should list all `app_*` tables. After saving a student in the app, refresh `app_students` — you should see rows with your `user_id`.
-
+**Verify in Supabase:** Table Editor should list all 17 `app_*` tables. After saving a student in the app, refresh `app_students` — you should see rows with your `user_id`.
