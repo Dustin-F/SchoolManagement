@@ -958,7 +958,7 @@ export function ClassDetailPage() {
               </div>
             </HintTooltip>
             <DropdownMenu>
-              <HintTooltip content="Add or import students, or open full attendance and points pages.">
+              <HintTooltip content="Add or import students, or open the full attendance page.">
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" variant="outline" disabled={classIsArchived}>
                     <UserPlus className="mr-1.5 h-3.5 w-3.5" />
