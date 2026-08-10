@@ -1,24 +1,28 @@
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
+import type {
+  AttendanceRecord,
+  AttendanceStatus,
+  BehaviourSkill,
+  ClassTask,
+  SchoolClass,
+  Student,
+  StudentTaskRecord,
+} from "@/types";
+import { ClassPointsToolbar } from "@/features/points/ClassPointsToolbar";
+import { ClassSeatingGrid } from "@/features/classes/ClassSeatingGrid";
+import { RosterStudentDetailDialog } from "@/features/classes/RosterStudentDetailDialog";
+import { NeedsAttentionStrip } from "@/features/classes/NeedsAttentionStrip";
+import { SeatingControlsPanel } from "@/features/classes/SeatingControlsPanel";
 import {
-  Check,
-  Clock,
-  Shield,
-  X,
-  MoreHorizontal,
-  StickyNote,
-} from "lucide-react";
-import type { AttendanceRecord, AttendanceStatus, ClassTask, Student, StudentTaskRecord, StudentTaskStatus } from "@/types";
+  RosterAttendanceButtons,
+  RosterPointsBadge,
+  RosterStudentDetailPanel,
+  RosterStudentIdentity,
+} from "@/features/classes/RosterStudentDetailPanel";
+import { Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { HintTooltip } from "@/components/ui/hint-tooltip";
 import {
   Table,
   TableBody,
@@ -27,413 +31,368 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
-import { getStudentDisplayName } from "@/lib/displayHelpers";
-import { STUDENT_TASK_STATUS_ORDER, studentTaskStatusLabel, studentTaskStatusSelectClass } from "@/lib/studentTaskStatus";
-import { isTaskOverdue } from "@/lib/taskUtils";
+import { useAppStore } from "@/store";
+import { getStudentAttentionFlags } from "@/lib/attentionUtils";
+import { getSeatColumns, getSeatRows, resolveSeatGrid } from "@/lib/seatingUtils";
+import { skillsForClassToolbar } from "@/lib/pointsUtils";
+import { cn, getLocalToday } from "@/lib/utils";
+import { classPageReturnTo } from "@/lib/studentNavigation";
 
-const attendanceStatuses: AttendanceStatus[] = ["present", "absent", "late", "excused"];
+type RosterViewMode = "seating" | "list";
 
-const attendanceBtnClass: Record<AttendanceStatus, string> = {
-  present: "bg-emerald-100 text-emerald-800 ring-emerald-500",
-  absent: "bg-red-100 text-red-800 ring-red-500",
-  late: "bg-amber-100 text-amber-900 ring-amber-500",
-  excused: "bg-blue-100 text-blue-900 ring-blue-500",
-};
-
-const AttendanceIcon: Record<AttendanceStatus, typeof Check> = {
-  present: Check,
-  absent: X,
-  late: Clock,
-  excused: Shield,
-};
+const rosterViewStorageKey = (classId: string) => `schoolhub-roster-view-${classId}`;
 
 interface StudentRosterTableProps {
+  cls: SchoolClass;
+  sessionDate: string;
+  todayStr?: string;
   students: Student[];
   activeTasks: ClassTask[];
   studentTaskRecords: StudentTaskRecord[];
   dayAttendanceRows: AttendanceRecord[];
-  behaviourNoteCountByStudent: Map<string, number>;
+  pointsTodayByStudent: Map<string, number>;
+  selectedStudentId?: string | null;
+  onSelectedStudentChange?: (studentId: string | null) => void;
   onMarkAttendance: (studentId: string, status: AttendanceStatus) => void;
-  onTaskStatusChange: (recordId: string, status: StudentTaskStatus) => void;
-  onTaskScoreBlur: (record: StudentTaskRecord, raw: string) => void;
-  onOpenProgress: (record: StudentTaskRecord, task: ClassTask) => void;
-  onOpenBehaviourList: (studentId: string) => void;
-  archivedTaskCount: number;
+  onAwardSkill?: (studentId: string, skill: BehaviourSkill) => void;
+  onAwardSkillBulk?: (studentIds: string[], skill: BehaviourSkill) => void;
+  readOnly?: boolean;
 }
 
 export function StudentRosterTable({
+  cls,
+  sessionDate,
+  todayStr: todayStrProp,
   students,
   activeTasks,
   studentTaskRecords,
   dayAttendanceRows,
-  behaviourNoteCountByStudent,
+  pointsTodayByStudent,
+  selectedStudentId: selectedStudentIdProp,
+  onSelectedStudentChange,
   onMarkAttendance,
-  onTaskStatusChange,
-  onTaskScoreBlur,
-  onOpenProgress,
-  onOpenBehaviourList,
-  archivedTaskCount,
+  onAwardSkill,
+  onAwardSkillBulk,
+  readOnly = false,
 }: StudentRosterTableProps) {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const location = useLocation();
+  const classReturnTo = classPageReturnTo(cls.id, location.search);
+  const todayStr = todayStrProp ?? getLocalToday();
+  const behaviourSkills = useAppStore((s) => s.behaviourSkills);
+  const [viewMode, setViewMode] = useState<RosterViewMode>(() => {
+    const saved = localStorage.getItem(rosterViewStorageKey(cls.id));
+    if (saved === "list") return "list";
+    if (saved === "tasks" || saved === "gradebook") return "seating";
+    if (saved === "seating") return "seating";
+    return "seating";
+  });
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(
+    students[0]?.id ?? null
+  );
+  const [seatDialogStudentId, setSeatDialogStudentId] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
 
-  const recordByTaskAndStudent = useMemo(() => {
-    const map = new Map<string, StudentTaskRecord>();
-    for (const r of studentTaskRecords) {
-      map.set(`${r.taskId}:${r.studentId}`, r);
+  const selectedStudentId = selectedStudentIdProp ?? internalSelectedId;
+  const setSelectedStudentId = (id: string | null) => {
+    if (onSelectedStudentChange) onSelectedStudentChange(id);
+    else setInternalSelectedId(id);
+  };
+
+  useEffect(() => {
+    if (students.length === 0) {
+      setSelectedStudentId(null);
+      return;
     }
-    return map;
-  }, [studentTaskRecords]);
+    if (!selectedStudentId || !students.some((s) => s.id === selectedStudentId)) {
+      setSelectedStudentId(students[0].id);
+    }
+  }, [students, selectedStudentId]);
 
-  const getTaskRecord = (taskId: string, studentId: string) =>
-    recordByTaskAndStudent.get(`${taskId}:${studentId}`);
+  useEffect(() => {
+    localStorage.setItem(rosterViewStorageKey(cls.id), viewMode);
+  }, [cls.id, viewMode]);
+
+  const attentionFlags = useMemo(
+    () =>
+      getStudentAttentionFlags(
+        students,
+        sessionDate,
+        todayStr,
+        dayAttendanceRows,
+        activeTasks,
+        studentTaskRecords,
+        pointsTodayByStudent
+      ),
+    [
+      students,
+      sessionDate,
+      todayStr,
+      dayAttendanceRows,
+      activeTasks,
+      studentTaskRecords,
+      pointsTodayByStudent,
+    ]
+  );
+
+  const toolbarSkills = useMemo(
+    () => skillsForClassToolbar(behaviourSkills, cls),
+    [behaviourSkills, cls]
+  );
+
+  const grid = useMemo(() => resolveSeatGrid(cls, cls.studentIds), [cls]);
+  const columns = getSeatColumns(cls);
+  const rowCount = getSeatRows(cls, cls.studentIds.length);
+
+  const seatDialogStudent = students.find((s) => s.id === seatDialogStudentId) ?? null;
+
+  const handleSeatCardClick = (studentId: string) => {
+    if (selectMode) {
+      setBulkSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(studentId)) next.delete(studentId);
+        else next.add(studentId);
+        return next;
+      });
+      return;
+    }
+    setSelectedStudentId(studentId);
+    setSeatDialogStudentId(studentId);
+  };
+
+  const selectRow = (rowIndex: number) => {
+    const start = rowIndex * columns;
+    const ids = grid
+      .slice(start, start + columns)
+      .filter((id): id is string => id != null);
+    setBulkSelectedIds(new Set(ids));
+  };
 
   const getAttendanceStatus = (studentId: string): AttendanceStatus | null => {
     const record = dayAttendanceRows.find((a) => a.studentId === studentId);
     return record ? record.status : null;
   };
 
-  const renderAttendanceCell = (student: Student) => {
-    const current = getAttendanceStatus(student.id);
-    return (
-      <div className="flex flex-wrap gap-1">
-        {attendanceStatuses.map((status) => {
-          const Icon = AttendanceIcon[status];
-          const active = current === status;
-          return (
-            <button
-              key={status}
-              type="button"
-              title={status}
-              onClick={() => onMarkAttendance(student.id, status)}
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-xs font-semibold transition-all",
-                active
-                  ? `${attendanceBtnClass[status]} ring-2 ring-offset-1 ring-offset-background`
-                  : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </button>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderTaskControls = (student: Student) => {
-    if (activeTasks.length === 0) {
-      return (
-        <span className="text-xs text-muted-foreground">
-          {archivedTaskCount > 0
-            ? "All tasks are archived. Expand “Archived tasks” below to restore."
-            : "Add tasks in the section below."}
-        </span>
-      );
-    }
-
-    return (
-      <div className="flex flex-col gap-2 min-w-[220px] max-w-md">
-        {activeTasks.map((task) => {
-          const rec = getTaskRecord(task.id, student.id);
-          const overdue = isTaskOverdue(task, todayStr);
-
-          if (!rec) {
-            return (
-              <div key={task.id} className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{task.title}</span> — syncing…
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={task.id}
-              className="flex flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-muted/20 px-2 py-1.5"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-foreground" title={task.title}>
-                  {task.title}
-                  {overdue && <span className="ml-1 text-red-600 dark:text-red-400">(due)</span>}
-                </p>
-              </div>
-
-              <Select
-                value={rec.status}
-                onValueChange={(v) => onTaskStatusChange(rec.id, v as StudentTaskStatus)}
-              >
-                <SelectTrigger
-                  className={cn(
-                    "h-8 w-37 shrink-0 text-xs",
-                    studentTaskStatusSelectClass(rec.status)
-                  )}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STUDENT_TASK_STATUS_ORDER.map((s) => (
-                    <SelectItem key={s} value={s} className="text-xs">
-                      {studentTaskStatusLabel[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Input
-                key={`${rec.id}-${rec.updatedAt}`}
-                type="number"
-                step={0.5}
-                placeholder="Pts"
-                className="h-8 w-16 text-xs"
-                defaultValue={rec.score != null ? String(rec.score) : ""}
-                title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
-                onBlur={(e) => onTaskScoreBlur(rec, e.target.value)}
-              />
-
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 shrink-0"
-                title="Feedback, submitted date, full edit"
-                onClick={() => onOpenProgress(rec, task)}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderAttendanceButtonsGrid = (student: Student) => {
-    const current = getAttendanceStatus(student.id);
-    return (
-      <div className="grid grid-cols-2 gap-1.5">
-        {attendanceStatuses.map((status) => {
-          const Icon = AttendanceIcon[status];
-          const active = current === status;
-          return (
-            <button
-              key={status}
-              type="button"
-              title={status}
-              onClick={() => onMarkAttendance(student.id, status)}
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-xs font-semibold transition-all",
-                active
-                  ? `${attendanceBtnClass[status]} ring-2 ring-offset-1 ring-offset-background`
-                  : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </button>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderMobileTaskRow = (student: Student, task: ClassTask) => {
-    const rec = getTaskRecord(task.id, student.id);
-    const overdue = isTaskOverdue(task, todayStr);
-
-    if (!rec) {
-      return (
-        <div className="rounded-lg border border-border/70 bg-muted/10 p-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{task.title}</span> — syncing…
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex flex-col gap-2 rounded-lg border border-border/80 bg-muted/20 p-2.5">
-        <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={task.title}>
-            {task.title}
-            {overdue && <span className="ml-1 text-red-600 dark:text-red-400">(due)</span>}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={rec.status}
-            onValueChange={(v) => onTaskStatusChange(rec.id, v as StudentTaskStatus)}
+  const renderViewToggle = () => (
+    <div className="mb-3 flex items-center gap-2">
+      <div className="flex flex-1 rounded-lg border border-border bg-muted/30 p-1">
+        {(["seating", "list"] as const).map((mode) => (
+          <HintTooltip
+            key={mode}
+            content={
+              mode === "seating"
+                ? "Seating plan with drag-and-drop layout."
+                : "Attendance and points by student."
+            }
           >
-            <SelectTrigger
-              className={cn(
-                "h-8 w-37 shrink-0 text-xs",
-                studentTaskStatusSelectClass(rec.status)
-              )}
+            <Button
+              type="button"
+              variant={viewMode === mode ? "default" : "ghost"}
+              size="sm"
+              className="h-8 flex-1 text-xs capitalize sm:text-sm"
+              onClick={() => setViewMode(mode)}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STUDENT_TASK_STATUS_ORDER.map((s) => (
-                <SelectItem key={s} value={s} className="text-xs">
-                  {studentTaskStatusLabel[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            key={`${rec.id}-${rec.updatedAt}`}
-            type="number"
-            step={0.5}
-            placeholder="Pts"
-            className="h-8 w-16 text-xs"
-            defaultValue={rec.score != null ? String(rec.score) : ""}
-            title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
-            onBlur={(e) => onTaskScoreBlur(rec, e.target.value)}
+              {mode}
+            </Button>
+          </HintTooltip>
+        ))}
+      </div>
+      <HintTooltip content="P: present · 1–4: award skills · →: next student">
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Keyboard shortcuts">
+          <Keyboard className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </HintTooltip>
+    </div>
+  );
+
+  const renderListDesktopRow = (student: Student) => {
+    const pts = pointsTodayByStudent.get(student.id) ?? 0;
+    const selected = selectedStudentId === student.id;
+    return (
+      <TableRow
+        key={student.id}
+        className={cn(
+          "cursor-pointer align-top transition-colors",
+          selected && "bg-primary/5 hover:bg-primary/10"
+        )}
+        onClick={() => setSelectedStudentId(student.id)}
+      >
+        <TableCell>
+          <RosterStudentIdentity student={student} selected={selected} returnTo={classReturnTo} />
+        </TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          <RosterAttendanceButtons
+            current={getAttendanceStatus(student.id)}
+            onMark={(status) => onMarkAttendance(student.id, status)}
+            disabled={readOnly}
           />
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 shrink-0"
-            title="Feedback, submitted date, full edit"
-            onClick={() => onOpenProgress(rec, task)}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </div>
+        </TableCell>
+        <TableCell className="text-right">
+          <RosterPointsBadge pts={pts} />
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  const renderListMobileCard = (student: Student) => {
+    const pts = pointsTodayByStudent.get(student.id) ?? 0;
+    const selected = selectedStudentId === student.id;
+    return (
+      <div
+        key={student.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => setSelectedStudentId(student.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedStudentId(student.id);
+          }
+        }}
+        className={cn(
+          "rounded-xl border transition-colors",
+          selected ? "border-primary ring-2 ring-primary/25" : "border-border"
+        )}
+      >
+        <RosterStudentDetailPanel
+          student={student}
+          pointsToday={pts}
+          attendanceStatus={getAttendanceStatus(student.id)}
+          activeTasks={[]}
+          getTaskRecord={() => undefined}
+          archivedTaskCount={0}
+          todayStr={todayStr}
+          onMarkAttendance={(status) => onMarkAttendance(student.id, status)}
+          onTaskStatusChange={() => {}}
+          onTaskScoreUpdate={() => {}}
+          onOpenProgress={() => {}}
+          readOnly={readOnly}
+          showTasks={false}
+          returnTo={classReturnTo}
+          className={cn("border-0 shadow-none", selected && "bg-primary/5")}
+        />
       </div>
     );
   };
 
   return (
     <div className="space-y-3">
+      {attentionFlags.length > 0 ? (
+        <div className="flex justify-start">
+          <NeedsAttentionStrip
+            flags={attentionFlags}
+            selectedStudentId={selectedStudentId}
+            onSelectStudent={(id) => {
+              setSelectedStudentId(id);
+              if (viewMode === "seating") setSeatDialogStudentId(id);
+            }}
+          />
+        </div>
+      ) : null}
+
       {students.length === 0 ? (
         <p className="text-sm text-muted-foreground">No students yet. Add someone to start tracking.</p>
       ) : (
         <>
-          <div className="hidden md:block overflow-x-auto">
-            <div className="rounded-xl border border-border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="min-w-[140px] whitespace-nowrap">Student</TableHead>
-                    <TableHead className="min-w-[200px] whitespace-nowrap">Attendance</TableHead>
-                    <TableHead className="min-w-[280px]">Tasks</TableHead>
-                    <TableHead className="min-w-[108px] whitespace-nowrap">Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {students.map((student) => {
-                    const noteCount = behaviourNoteCountByStudent.get(student.id) ?? 0;
-                    return (
-                      <TableRow key={student.id} className="align-top">
-                        <TableCell>
-                          <Link
-                            to={`/students/${student.id}`}
-                            className="font-semibold text-foreground hover:text-primary"
-                          >
-                            {getStudentDisplayName(student)}
-                          </Link>
-                          {student.parentPhone && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {student.parentPhone}
-                            </p>
-                          )}
-                        </TableCell>
-                        <TableCell>{renderAttendanceCell(student)}</TableCell>
-                        <TableCell>{renderTaskControls(student)}</TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 px-2.5"
-                            onClick={() => onOpenBehaviourList(student.id)}
-                            title="View notes for this class or add a new one"
-                          >
-                            <StickyNote className="h-3.5 w-3.5 shrink-0" />
-                            <span>Notes</span>
-                            {noteCount > 0 && (
-                              <Badge
-                                variant="secondary"
-                                className="rounded-sm px-1.5 text-[10px] tabular-nums"
-                              >
-                                {noteCount}
-                              </Badge>
-                            )}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+          {viewMode === "list" && !readOnly && (
+            <div className="sticky top-16 z-20 -mx-4 border-y border-border bg-card/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/90 sm:-mx-6 sm:px-6">
+              <ClassPointsToolbar
+                cls={cls}
+                students={students}
+                sessionDate={sessionDate}
+                selectedStudentId={selectedStudentId}
+              />
             </div>
-          </div>
+          )}
 
-          <div className="md:hidden space-y-3">
-            {students.map((student) => {
-              const noteCount = behaviourNoteCountByStudent.get(student.id) ?? 0;
-              return (
-                <div
-                  key={student.id}
-                  className="rounded-xl border border-border bg-card p-4 space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <Link
-                        to={`/students/${student.id}`}
-                        className="font-semibold text-foreground hover:text-primary transition-colors"
-                      >
-                        {getStudentDisplayName(student)}
-                      </Link>
-                      {student.parentPhone && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {student.parentPhone}
-                        </p>
-                      )}
-                    </div>
+          {renderViewToggle()}
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 gap-1.5 px-2.5 shrink-0"
-                      onClick={() => onOpenBehaviourList(student.id)}
-                      title="View notes for this class or add a new one"
-                    >
-                      <StickyNote className="h-3.5 w-3.5 shrink-0" />
-                      <span className="text-sm">Notes</span>
-                      {noteCount > 0 && (
-                        <Badge
-                          variant="secondary"
-                          className="rounded-sm px-1.5 text-[10px] tabular-nums"
-                        >
-                          {noteCount}
-                        </Badge>
-                      )}
-                    </Button>
-                  </div>
+          {viewMode === "seating" ? (
+            <>
+              {!readOnly && (
+                <SeatingControlsPanel
+                  cls={cls}
+                  selectedIds={bulkSelectedIds}
+                  toolbarSkills={toolbarSkills}
+                  selectMode={selectMode}
+                  rowCount={rowCount}
+                  onToggleSelectMode={() => {
+                    setSelectMode((v) => {
+                      const next = !v;
+                      if (next) {
+                        setSelectedStudentId(null);
+                        setSeatDialogStudentId(null);
+                      }
+                      return next;
+                    });
+                    setBulkSelectedIds(new Set());
+                  }}
+                  onMarkPresent={(ids) => ids.forEach((id) => onMarkAttendance(id, "present"))}
+                  onAwardSkill={(ids, skill) => {
+                    if (onAwardSkillBulk) onAwardSkillBulk(ids, skill);
+                    else ids.forEach((id) => onAwardSkill?.(id, skill));
+                  }}
+                  onSelectRow={selectRow}
+                />
+              )}
+              <ClassSeatingGrid
+                cls={cls}
+                students={students}
+                selectedStudentId={selectedStudentId}
+                bulkSelectedIds={selectMode ? bulkSelectedIds : undefined}
+                onSelectStudent={handleSeatCardClick}
+                pointsTodayByStudent={pointsTodayByStudent}
+                getAttendanceStatus={getAttendanceStatus}
+                readOnly={readOnly}
+              />
+              <RosterStudentDetailDialog
+                returnTo={classReturnTo}
+                open={seatDialogStudentId !== null}
+                onOpenChange={(open) => {
+                  if (!open) setSeatDialogStudentId(null);
+                }}
+                cls={cls}
+                students={students}
+                sessionDate={sessionDate}
+                student={seatDialogStudent}
+                pointsToday={
+                  seatDialogStudent
+                    ? (pointsTodayByStudent.get(seatDialogStudent.id) ?? 0)
+                    : 0
+                }
+                attendanceStatus={
+                  seatDialogStudent ? getAttendanceStatus(seatDialogStudent.id) : null
+                }
+                onMarkAttendance={(status) => {
+                  if (seatDialogStudent) onMarkAttendance(seatDialogStudent.id, status);
+                }}
+                readOnly={readOnly}
+              />
+            </>
+          ) : (
+            <>
+              <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="min-w-[180px]">Student</TableHead>
+                      <TableHead className="min-w-[120px]">Attendance</TableHead>
+                      <TableHead className="min-w-[72px] text-right">Points today</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {students.map((student) => renderListDesktopRow(student))}
+                  </TableBody>
+                </Table>
+              </div>
 
-                  <div className="space-y-1.5">
-                    <p className="text-xs text-muted-foreground">Attendance</p>
-                    {renderAttendanceButtonsGrid(student)}
-                  </div>
-
-                  <div className="space-y-2">
-                    {activeTasks.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        {archivedTaskCount > 0
-                          ? "All tasks are archived. Expand “Archived tasks” below to restore."
-                          : "Add tasks in the section below."}
-                      </p>
-                    ) : (
-                      activeTasks.map((task) => renderMobileTaskRow(student, task))
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              <div className="md:hidden space-y-3">
+                {students.map((student) => renderListMobileCard(student))}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
   );
 }
-

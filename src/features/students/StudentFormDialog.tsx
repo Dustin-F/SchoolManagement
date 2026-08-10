@@ -1,32 +1,37 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DatePicker } from "@/components/ui/date-picker";
 import { CheckboxList } from "@/components/CheckboxList";
-import { toast } from "sonner";
+import { PersonNameFormFields } from "@/components/PersonNameFormFields";
 import { useAppStore } from "@/store";
 import { studentSchema, type StudentFormData } from "@/lib/schemas";
 import { findDuplicateStudent } from "@/lib/studentIdentity";
+import { getPrimaryName } from "@/lib/personNames";
 import type { Student } from "@/types";
+
+function formName(data: StudentFormData): string {
+  return getPrimaryName(data) || "Student";
+}
 
 interface StudentFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingStudent?: Student | null;
-  /** When creating, pre-select these classes (e.g. current class from class detail). */
   defaultClassIds?: string[];
-  /** Hide class picker; new students are enrolled only in `defaultClassIds`. */
   lockEnrollment?: boolean;
 }
 
@@ -38,48 +43,54 @@ export function StudentFormDialog({
   lockEnrollment = false,
 }: StudentFormDialogProps) {
   const classes = useAppStore((s) => s.classes);
+  const students = useAppStore((s) => s.students);
   const addStudent = useAppStore((s) => s.addStudent);
   const updateStudent = useAppStore((s) => s.updateStudent);
   const setStudentEnrollment = useAppStore((s) => s.setStudentEnrollment);
-  const students = useAppStore((s) => s.students);
 
-  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
-
-  /** Callers like `defaultClassIds={[cls.id]}` pass a new array every render; use a stable key for the effect. */
-  const defaultClassIdsKey = defaultClassIds.join("\0");
+  const defaultClassIdsKey = defaultClassIds.join(",");
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([...defaultClassIds]);
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<StudentFormData>({
     resolver: zodResolver(studentSchema),
     defaultValues: {
       firstName: "",
       lastName: "",
-      chineseName: "",
-      pinyinName: "",
+      name2First: "",
+      name2Last: "",
+      name3First: "",
+      name3Last: "",
       email: "",
       dateOfBirth: "",
       parentName: "",
       parentPhone: "",
       notes: "",
+      photoUrl: "",
     },
   });
 
   useEffect(() => {
     if (editingStudent) {
       reset({
-        firstName: editingStudent.firstName,
-        lastName: editingStudent.lastName,
-        chineseName: editingStudent.chineseName ?? "",
-        pinyinName: editingStudent.pinyinName ?? "",
+        firstName: editingStudent.firstName ?? "",
+        lastName: editingStudent.lastName ?? "",
+        name2First: editingStudent.name2First ?? "",
+        name2Last: editingStudent.name2Last ?? "",
+        name3First: editingStudent.name3First ?? "",
+        name3Last: editingStudent.name3Last ?? "",
         email: editingStudent.email ?? "",
         dateOfBirth: editingStudent.dateOfBirth ?? "",
         parentName: editingStudent.parentName ?? "",
         parentPhone: editingStudent.parentPhone ?? "",
         notes: editingStudent.notes ?? "",
+        photoUrl: editingStudent.photoUrl ?? "",
       });
       const enrolled = classes.filter((c) => c.studentIds.includes(editingStudent.id)).map((c) => c.id);
       setSelectedClassIds(enrolled);
@@ -87,13 +98,16 @@ export function StudentFormDialog({
       reset({
         firstName: "",
         lastName: "",
-        chineseName: "",
-        pinyinName: "",
+        name2First: "",
+        name2Last: "",
+        name3First: "",
+        name3Last: "",
         email: "",
         dateOfBirth: "",
         parentName: "",
         parentPhone: "",
         notes: "",
+        photoUrl: "",
       });
       setSelectedClassIds([...defaultClassIds]);
     }
@@ -107,27 +121,28 @@ export function StudentFormDialog({
       !editingStudent && lockEnrollment ? [...defaultClassIds] : selectedClassIds;
     const duplicate = findDuplicateStudent(data, students, editingStudent?.id);
     if (duplicate) {
-      const duplicateName = [duplicate.firstName, duplicate.lastName].filter(Boolean).join(" ")
-        || duplicate.chineseName
-        || duplicate.pinyinName
-        || "existing student";
-      toast.error(
-        `Possible duplicate found: ${duplicateName}.`
-      );
+      const duplicateName = getPrimaryName(duplicate) || "existing student";
+      toast.error(`Possible duplicate found: ${duplicateName}.`);
       return;
     }
+    const payload = {
+      ...data,
+      firstName: (data.firstName ?? "").trim(),
+      lastName: (data.lastName ?? "").trim(),
+      name2First: data.name2First?.trim() || undefined,
+      name2Last: data.name2Last?.trim() || undefined,
+      name3First: data.name3First?.trim() || undefined,
+      name3Last: data.name3Last?.trim() || undefined,
+      photoUrl: data.photoUrl?.trim() || undefined,
+    };
     if (editingStudent) {
-      updateStudent(editingStudent.id, data);
+      updateStudent(editingStudent.id, payload);
       setStudentEnrollment(editingStudent.id, selectedClassIds);
-      const updatedName =
-        `${data.firstName} ${data.lastName}`.trim() || data.chineseName || data.pinyinName || "Student";
-      toast.success(`${updatedName} updated.`);
+      toast.success(`${formName(data)} updated.`);
     } else {
-      const newId = addStudent(data);
+      const newId = addStudent(payload);
       setStudentEnrollment(newId, enrollment);
-      const createdName =
-        `${data.firstName} ${data.lastName}`.trim() || data.chineseName || data.pinyinName || "Student";
-      toast.success(`${createdName} added.`);
+      toast.success(`${formName(data)} added.`);
     }
     onOpenChange(false);
     reset();
@@ -148,31 +163,18 @@ export function StudentFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">English First Name (optional)</Label>
-              <Input id="firstName" placeholder="John" {...register("firstName")} />
-              {errors.firstName && <p className="text-xs text-destructive">{errors.firstName.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">English Last Name (optional)</Label>
-              <Input id="lastName" placeholder="Doe" {...register("lastName")} />
-              {errors.lastName && <p className="text-xs text-destructive">{errors.lastName.message}</p>}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="chineseName">Chinese Name (optional)</Label>
-              <Input id="chineseName" placeholder="王小明" {...register("chineseName")} />
-              {errors.chineseName && <p className="text-xs text-destructive">{errors.chineseName.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pinyinName">Pinyin Name (optional)</Label>
-              <Input id="pinyinName" placeholder="Wang Xiaoming" {...register("pinyinName")} />
-              {errors.pinyinName && <p className="text-xs text-destructive">{errors.pinyinName.message}</p>}
-            </div>
-          </div>
+          <PersonNameFormFields
+            register={register}
+            setValue={setValue}
+            errors={errors}
+            showSavedTiers={!!editingStudent}
+            hasName2Data={
+              !!(editingStudent?.name2First?.trim() || editingStudent?.name2Last?.trim())
+            }
+            hasName3Data={
+              !!(editingStudent?.name3First?.trim() || editingStudent?.name3Last?.trim())
+            }
+          />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -182,7 +184,13 @@ export function StudentFormDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="dateOfBirth">Date of Birth</Label>
-              <Input id="dateOfBirth" type="date" {...register("dateOfBirth")} />
+              <DatePicker
+                id="dateOfBirth"
+                value={watch("dateOfBirth") ?? ""}
+                onChange={(v) => setValue("dateOfBirth", v, { shouldValidate: true })}
+                placeholder="Pick date of birth"
+                clearable
+              />
             </div>
           </div>
 
@@ -215,6 +223,14 @@ export function StudentFormDialog({
               <Label htmlFor="parentPhone">Parent Phone</Label>
               <Input id="parentPhone" placeholder="555-0100" {...register("parentPhone")} />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="photoUrl">
+              Photo URL <span className="text-muted-foreground font-normal">(optional, with consent)</span>
+            </Label>
+            <Input id="photoUrl" placeholder="https://…" {...register("photoUrl")} />
+            {errors.photoUrl && <p className="text-xs text-destructive">{errors.photoUrl.message}</p>}
           </div>
 
           <div className="space-y-2">

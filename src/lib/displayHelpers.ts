@@ -1,38 +1,51 @@
-import type { BehaviourSeverity, AttendanceStatus, Student, Teacher } from "@/types";
+import type { AttendanceStatus, Student, Teacher } from "@/types";
+import {
+  getExtraNameLine,
+  getPersonNameLines,
+  getPrimaryName,
+  migratePersonNames,
+} from "@/lib/personNames";
 
-function compact(value?: string): string {
-  return (value ?? "").trim();
+export { getExtraNameLine, getPersonNameLines, migratePersonNames };
+
+export function getStudentSeatNames(student: Student): {
+  name1?: string;
+  name2?: string;
+  name3?: string;
+} {
+  const lines = getPersonNameLines(student);
+  return {
+    name1: lines[0],
+    name2: lines[1],
+    name3: lines[2],
+  };
 }
 
 export function getStudentDisplayName(student: Student): string {
-  const english = `${compact(student.firstName)} ${compact(student.lastName)}`.trim();
-  if (english) return english;
-  if (compact(student.chineseName)) return compact(student.chineseName);
-  if (compact(student.pinyinName)) return compact(student.pinyinName);
-  return "Unnamed student";
+  return getPrimaryName(student) || "Unnamed student";
 }
 
 export function getTeacherDisplayName(teacher: Teacher): string {
-  const english = `${compact(teacher.firstName)} ${compact(teacher.lastName)}`.trim();
-  if (english) return english;
-  if (compact(teacher.chineseName)) return compact(teacher.chineseName);
-  if (compact(teacher.pinyinName)) return compact(teacher.pinyinName);
-  return "Unnamed teacher";
+  return getPrimaryName(teacher) || "Unnamed teacher";
 }
 
 export function getPersonInitials(person: {
   firstName?: string;
   lastName?: string;
-  chineseName?: string;
-  pinyinName?: string;
+  name2First?: string;
+  name2Last?: string;
+  name3First?: string;
+  name3Last?: string;
 }): string {
-  const first = compact(person.firstName);
-  const last = compact(person.lastName);
-  if (first || last) return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase() || "??";
-  const chinese = compact(person.chineseName);
-  if (chinese) return chinese.slice(0, 1);
-  const pinyin = compact(person.pinyinName);
-  if (pinyin) return pinyin.slice(0, 1).toUpperCase();
+  const first = (person.firstName ?? "").trim();
+  const last = (person.lastName ?? "").trim();
+  if (first || last) {
+    return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase() || "??";
+  }
+  const n2f = (person.name2First ?? "").trim();
+  if (n2f) return n2f.slice(0, 1);
+  const n3f = (person.name3First ?? "").trim();
+  if (n3f) return n3f.slice(0, 1).toUpperCase();
   return "??";
 }
 
@@ -41,20 +54,9 @@ export function getStudentName(id: string, students: Student[]): string {
   return s ? getStudentDisplayName(s) : "Unknown";
 }
 
-export const SEVERITY_BADGE_VARIANT: Record<
-  BehaviourSeverity,
-  "success" | "warning" | "secondary" | "destructive"
-> = {
-  positive: "success",
-  minor: "warning",
-  moderate: "secondary",
-  major: "destructive",
-};
-
 export const ATTENDANCE_STATUS_COLORS: Record<AttendanceStatus, string> = {
   present: "bg-emerald-100 text-emerald-800",
   absent: "bg-red-100 text-red-800",
   late: "bg-amber-100 text-amber-800",
   excused: "bg-blue-100 text-blue-800",
 };
-

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
+import { activeStudents } from "@/lib/archiveUtils";
 import { getStudentDisplayName } from "@/lib/displayHelpers";
 
 interface AddExistingStudentDialogProps {
@@ -37,7 +38,7 @@ export function AddExistingStudentDialog({
   const enrollStudentInClass = useAppStore((s) => s.enrollStudentInClass);
   const [selectedId, setSelectedId] = useState("");
 
-  const available = students.filter((s) => !enrolledStudentIds.includes(s.id));
+  const available = activeStudents(students).filter((s) => !enrolledStudentIds.includes(s.id));
 
   useEffect(() => {
     if (open) setSelectedId("");

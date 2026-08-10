@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Pencil, Trash2, BookOpen, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
@@ -142,8 +143,13 @@ export function SubjectsPage() {
                           <div className="flex flex-wrap gap-1">
                             {subjectClasses.length > 0
                               ? subjectClasses.map((c) => (
-                                  <Badge key={c.id} variant="secondary" className="text-xs">
-                                    {c.name}
+                                  <Badge key={c.id} variant="secondary" className="px-0 text-xs">
+                                    <Link
+                                      to={`/classes/${c.id}`}
+                                      className="px-2 py-0.5 hover:text-primary hover:underline"
+                                    >
+                                      {c.name}
+                                    </Link>
                                   </Badge>
                                 ))
                               : <span className="text-xs text-muted-foreground">None</span>}
@@ -175,8 +181,16 @@ export function SubjectsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Subject</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deleteTarget?.name}"? This cannot be undone.
+            <AlertDialogDescription className="space-y-2">
+              <span>Are you sure you want to delete &quot;{deleteTarget?.name}&quot;? This cannot be undone.</span>
+              {deleteTarget && getClassesForSubject(deleteTarget.id).length > 0 && (
+                <span className="block text-amber-700 dark:text-amber-300">
+                  Used by {getClassesForSubject(deleteTarget.id).length} class
+                  {getClassesForSubject(deleteTarget.id).length !== 1 ? "es" : ""}:{" "}
+                  {getClassesForSubject(deleteTarget.id).map((c) => c.name).join(", ")}. Those classes will keep
+                  their data but should be reassigned to another subject.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

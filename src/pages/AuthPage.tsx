@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { supabase } from "@/lib/supabase";
 
 export function AuthPage() {
@@ -52,10 +53,13 @@ export function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-md border-primary/25 shadow-theme-card">
+        <CardHeader className="space-y-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-brand text-lg font-extrabold text-white shadow-theme-glow">
+            S
+          </div>
+          <CardTitle className="text-gradient">
             {mode === "signin"
               ? "Teacher sign in"
               : mode === "signup"
@@ -97,9 +101,12 @@ export function AuthPage() {
               </div>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading
-                ? "Please wait..."
-                : mode === "signin"
+              {loading ? (
+                <>
+                  <Spinner className="mr-2" />
+                  Please wait...
+                </>
+              ) : mode === "signin"
                   ? "Sign in"
                   : mode === "signup"
                     ? "Create account"

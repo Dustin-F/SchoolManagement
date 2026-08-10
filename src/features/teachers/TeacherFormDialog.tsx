@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PersonNameFormFields } from "@/components/PersonNameFormFields";
 import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { teacherSchema, type TeacherFormData } from "@/lib/schemas";
@@ -24,6 +25,18 @@ interface TeacherFormDialogProps {
   editingTeacher?: Teacher | null;
 }
 
+function normalizeTeacherPayload(data: TeacherFormData) {
+  return {
+    ...data,
+    firstName: (data.firstName ?? "").trim(),
+    lastName: (data.lastName ?? "").trim(),
+    name2First: data.name2First?.trim() || undefined,
+    name2Last: data.name2Last?.trim() || undefined,
+    name3First: data.name3First?.trim() || undefined,
+    name3Last: data.name3Last?.trim() || undefined,
+  };
+}
+
 export function TeacherFormDialog({ open, onOpenChange, editingTeacher }: TeacherFormDialogProps) {
   const addTeacher = useAppStore((s) => s.addTeacher);
   const updateTeacher = useAppStore((s) => s.updateTeacher);
@@ -32,34 +45,56 @@ export function TeacherFormDialog({ open, onOpenChange, editingTeacher }: Teache
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<TeacherFormData>({
     resolver: zodResolver(teacherSchema),
-    defaultValues: { firstName: "", lastName: "", chineseName: "", pinyinName: "", email: "", phone: "" },
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      name2First: "",
+      name2Last: "",
+      name3First: "",
+      name3Last: "",
+      email: "",
+      phone: "",
+    },
   });
 
   useEffect(() => {
     if (editingTeacher) {
       reset({
-        firstName: editingTeacher.firstName,
-        lastName: editingTeacher.lastName,
-        chineseName: editingTeacher.chineseName ?? "",
-        pinyinName: editingTeacher.pinyinName ?? "",
+        firstName: editingTeacher.firstName ?? "",
+        lastName: editingTeacher.lastName ?? "",
+        name2First: editingTeacher.name2First ?? "",
+        name2Last: editingTeacher.name2Last ?? "",
+        name3First: editingTeacher.name3First ?? "",
+        name3Last: editingTeacher.name3Last ?? "",
         email: editingTeacher.email,
         phone: editingTeacher.phone ?? "",
       });
     } else {
-      reset({ firstName: "", lastName: "", chineseName: "", pinyinName: "", email: "", phone: "" });
+      reset({
+        firstName: "",
+        lastName: "",
+        name2First: "",
+        name2Last: "",
+        name3First: "",
+        name3Last: "",
+        email: "",
+        phone: "",
+      });
     }
   }, [editingTeacher, reset]);
 
   const onSubmit = (data: TeacherFormData) => {
+    const payload = normalizeTeacherPayload(data);
     if (editingTeacher) {
-      updateTeacher(editingTeacher.id, data);
-      toast.success(`${getTeacherDisplayName({ ...editingTeacher, ...data })} updated.`);
+      updateTeacher(editingTeacher.id, payload);
+      toast.success(`${getTeacherDisplayName({ ...editingTeacher, ...payload })} updated.`);
     } else {
-      addTeacher({ ...data, subjects: [] });
-      toast.success(`${getTeacherDisplayName({ ...data, id: "", createdAt: "", updatedAt: "" })} added.`);
+      addTeacher({ ...payload, subjects: [] });
+      toast.success(`${getTeacherDisplayName({ ...payload, id: "", createdAt: "", updatedAt: "" })} added.`);
     }
     onOpenChange(false);
     reset();
@@ -76,29 +111,18 @@ export function TeacherFormDialog({ open, onOpenChange, editingTeacher }: Teache
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">English First Name (optional)</Label>
-              <Input id="firstName" placeholder="Sarah" {...register("firstName")} />
-              {errors.firstName && <p className="text-xs text-destructive">{errors.firstName.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">English Last Name (optional)</Label>
-              <Input id="lastName" placeholder="Johnson" {...register("lastName")} />
-              {errors.lastName && <p className="text-xs text-destructive">{errors.lastName.message}</p>}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="chineseName">Chinese Name (optional)</Label>
-              <Input id="chineseName" placeholder="张老师" {...register("chineseName")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pinyinName">Pinyin Name (optional)</Label>
-              <Input id="pinyinName" placeholder="Zhang Laoshi" {...register("pinyinName")} />
-            </div>
-          </div>
+          <PersonNameFormFields
+            register={register}
+            setValue={setValue}
+            errors={errors}
+            showSavedTiers={!!editingTeacher}
+            hasName2Data={
+              !!(editingTeacher?.name2First?.trim() || editingTeacher?.name2Last?.trim())
+            }
+            hasName3Data={
+              !!(editingTeacher?.name3First?.trim() || editingTeacher?.name3Last?.trim())
+            }
+          />
 
           <div className="space-y-2">
             <Label htmlFor="email">Email (optional)</Label>

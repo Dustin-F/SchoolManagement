@@ -1,7 +1,26 @@
 import type { Student } from "@/types";
+import { getPersonNameLines } from "@/lib/personNames";
 
 type StudentLike = Partial<
-  Pick<Student, "id" | "firstName" | "lastName" | "chineseName" | "pinyinName" | "dateOfBirth">
+  Pick<
+    Student,
+    | "id"
+    | "firstName"
+    | "lastName"
+    | "name2First"
+    | "name2Last"
+    | "name3First"
+    | "name3Last"
+    | "dateOfBirth"
+  > & {
+    name1?: string;
+    name2?: string;
+    name3?: string;
+    nativeName?: string;
+    phoneticName?: string;
+    chineseName?: string;
+    pinyinName?: string;
+  }
 >;
 
 function normalize(value?: string): string {
@@ -9,26 +28,21 @@ function normalize(value?: string): string {
 }
 
 export function isDuplicateStudent(candidate: StudentLike, existing: StudentLike): boolean {
-  const candidateChinese = normalize(candidate.chineseName);
-  const existingChinese = normalize(existing.chineseName);
-  const candidatePinyin = normalize(candidate.pinyinName);
-  const existingPinyin = normalize(existing.pinyinName);
+  const candidateLines = new Set(
+    getPersonNameLines(candidate).map(normalize).filter(Boolean)
+  );
+  const existingLines = new Set(
+    getPersonNameLines(existing).map(normalize).filter(Boolean)
+  );
 
-  const candidateFirst = normalize(candidate.firstName);
-  const candidateLast = normalize(candidate.lastName);
-  const existingFirst = normalize(existing.firstName);
-  const existingLast = normalize(existing.lastName);
-
-  const chineseMatch = candidateChinese !== "" && candidateChinese === existingChinese;
-  const pinyinMatch = candidatePinyin !== "" && candidatePinyin === existingPinyin;
-  const englishMatch =
-    candidateFirst !== "" &&
-    candidateLast !== "" &&
-    candidateFirst === existingFirst &&
-    candidateLast === existingLast;
-
-  const baseMatch = chineseMatch || pinyinMatch || englishMatch;
-  if (!baseMatch) return false;
+  let nameMatch = false;
+  for (const line of candidateLines) {
+    if (existingLines.has(line)) {
+      nameMatch = true;
+      break;
+    }
+  }
+  if (!nameMatch) return false;
 
   const candidateDob = normalize(candidate.dateOfBirth);
   const existingDob = normalize(existing.dateOfBirth);
@@ -48,4 +62,3 @@ export function findDuplicateStudent(
     return isDuplicateStudent(candidate, existing);
   });
 }
-

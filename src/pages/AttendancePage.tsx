@@ -3,10 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import { ClipboardList, Check, X, Clock, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
+import { PageBackButton } from "@/components/PageBackButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -24,10 +25,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppStore } from "@/store";
+import { activeClasses, activeStudents } from "@/lib/archiveUtils";
 import { usePagination } from "@/hooks/usePagination";
-import type { AttendanceStatus } from "@/types";
-import { formatDate } from "@/lib/utils";
+import { TablePagination } from "@/components/TablePagination";
+import type { AttendanceReasonCode, AttendanceStatus } from "@/types";
+import {
+  ATTENDANCE_REASON_CODES,
+  attendanceStatusShowsReason,
+} from "@/lib/attendanceConstants";
+import { showUndoToast } from "@/lib/undoToast";
+import { getAttendanceAlerts } from "@/lib/attentionUtils";
+import { formatDate, getLocalToday } from "@/lib/utils";
 import { getStudentDisplayName, getStudentName } from "@/lib/displayHelpers";
+import { usePageBack } from "@/hooks/usePageBack";
 
 const statusConfig: Record<AttendanceStatus, { label: string; color: string; icon: React.ElementType }> = {
   present: { label: "Present", color: "bg-emerald-100 text-emerald-800", icon: Check },
@@ -44,23 +54,36 @@ export function AttendancePage() {
   const attendance = useAppStore((s) => s.attendance);
   const addAttendance = useAppStore((s) => s.addAttendance);
   const updateAttendance = useAppStore((s) => s.updateAttendance);
+  const deleteAttendance = useAppStore((s) => s.deleteAttendance);
   const [searchParams] = useSearchParams();
   const classIdFromUrl = searchParams.get("classId");
+  const dateFromUrl = searchParams.get("date");
+  const { backPath, showBack, backLabel } = usePageBack("/attendance");
 
-  const today = new Date().toISOString().split("T")[0];
-  const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id ?? "");
+  const today = getLocalToday();
+  const activeClassList = activeClasses(classes);
+  const [selectedClassId, setSelectedClassId] = useState(activeClassList[0]?.id ?? "");
   const [selectedDate, setSelectedDate] = useState(today);
   const [view, setView] = useState<"mark" | "history">("mark");
 
   useEffect(() => {
-    if (classIdFromUrl && classes.some((c) => c.id === classIdFromUrl)) {
+    if (classIdFromUrl && activeClassList.some((c) => c.id === classIdFromUrl)) {
       setSelectedClassId(classIdFromUrl);
     }
-  }, [classIdFromUrl, classes]);
+  }, [classIdFromUrl, activeClassList]);
+
+  useEffect(() => {
+    if (dateFromUrl && /^\d{4}-\d{2}-\d{2}$/.test(dateFromUrl)) {
+      setSelectedDate(dateFromUrl);
+    }
+  }, [dateFromUrl]);
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
   const classStudents = useMemo(
-    () => selectedClass ? students.filter((s) => selectedClass.studentIds.includes(s.id)) : [],
+    () =>
+      selectedClass
+        ? activeStudents(students).filter((s) => selectedClass.studentIds.includes(s.id))
+        : [],
     [students, selectedClass]
   );
 
@@ -75,19 +98,39 @@ export function AttendancePage() {
     return record ? record.status : null;
   };
 
-  const handleMark = (studentId: string, status: AttendanceStatus) => {
+  const handleMark = (
+    studentId: string,
+    status: AttendanceStatus,
+    reasonCode?: AttendanceReasonCode
+  ) => {
     const existing = dayAttendance.find((a) => a.studentId === studentId);
+    const prevStatus = existing?.status ?? null;
+    const prevReason = existing?.reasonCode;
     if (existing) {
-      updateAttendance(existing.id, { status });
+      updateAttendance(existing.id, { status, reasonCode });
+      showUndoToast(`Attendance: ${status}`, () => {
+        if (prevStatus) updateAttendance(existing.id, { status: prevStatus, reasonCode: prevReason });
+        else deleteAttendance(existing.id);
+      });
     } else {
-      addAttendance({
+      const newId = addAttendance({
         studentId,
         classId: selectedClassId,
         date: selectedDate,
         status,
+        reasonCode,
       });
+      showUndoToast(`Attendance: ${status}`, () => deleteAttendance(newId));
     }
   };
+
+  const attendanceAlerts = useMemo(
+    () =>
+      selectedClass
+        ? getAttendanceAlerts(classStudents, selectedClass.id, attendance)
+        : [],
+    [selectedClass, classStudents, attendance]
+  );
 
   const handleMarkAllPresent = () => {
     classStudents.forEach((s) => {
@@ -110,12 +153,15 @@ export function AttendancePage() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [attendance, selectedClassId]);
 
-  const { paginated: paginatedHistory, page: historyPage, setPage: setHistoryPage, totalPages: historyTotalPages, reset: resetHistoryPage } = usePagination(historyRecords, 30);
+  const { paginated: paginatedHistory, page: historyPage, setPage: setHistoryPage, totalPages: historyTotalPages, reset: resetHistoryPage } = usePagination(historyRecords, 25);
+  const { paginated: paginatedMarkStudents, page: markPage, setPage: setMarkPage, totalPages: markTotalPages, reset: resetMarkPage } = usePagination(classStudents, 25);
 
   useEffect(() => { resetHistoryPage(); }, [selectedClassId]);
+  useEffect(() => { resetMarkPage(); }, [selectedClassId, selectedDate]);
 
   return (
     <div>
+      {showBack && <PageBackButton to={backPath} label={backLabel} />}
       <PageHeader
         title="Attendance"
         description="Mark and review attendance by class."
@@ -130,7 +176,7 @@ export function AttendancePage() {
               <SelectValue placeholder="Select class" />
             </SelectTrigger>
             <SelectContent>
-              {classes.map((c) => (
+              {activeClassList.map((c) => (
                 <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
               ))}
             </SelectContent>
@@ -138,10 +184,9 @@ export function AttendancePage() {
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Date</Label>
-          <Input
-            type="date"
+          <DatePicker
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={setSelectedDate}
             className="w-full sm:w-44"
           />
         </div>
@@ -163,6 +208,18 @@ export function AttendancePage() {
         </div>
       </div>
 
+      {attendanceAlerts.length > 0 && (
+        <Card className="mb-4 border-amber-500/30 bg-amber-500/5">
+          <CardContent className="flex flex-wrap gap-2 py-3">
+            {attendanceAlerts.map((a) => (
+              <Badge key={`${a.studentId}-${a.message}`} variant="outline" className="text-xs">
+                {a.studentName}: {a.message}
+              </Badge>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {!selectedClassId ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <ClipboardList className="mb-4 h-12 w-12" />
@@ -183,25 +240,29 @@ export function AttendancePage() {
             {classStudents.length === 0 ? (
               <p className="text-sm text-muted-foreground">No students in this class.</p>
             ) : (
+              <>
               <div className="space-y-2">
-                {classStudents.map((student) => {
+                {paginatedMarkStudents.map((student) => {
                   const current = getStudentStatus(student.id);
+                  const record = dayAttendance.find((a) => a.studentId === student.id);
+                  const showReason = current ? attendanceStatusShowsReason(current) : false;
                   return (
                     <div
                       key={student.id}
-                      className="flex items-center justify-between rounded-lg border border-border p-3"
+                      className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <span className="font-medium">
                         {getStudentDisplayName(student)}
                       </span>
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {statuses.map((status) => {
                           const cfg = statusConfig[status];
                           const isActive = current === status;
                           return (
                             <button
                               key={status}
-                              onClick={() => handleMark(student.id, status)}
+                              type="button"
+                              onClick={() => handleMark(student.id, status, record?.reasonCode)}
                               className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
                                 isActive
                                   ? cfg.color + " ring-2 ring-offset-1 ring-current"
@@ -213,11 +274,37 @@ export function AttendancePage() {
                             </button>
                           );
                         })}
+                        {showReason && (
+                          <Select
+                            value={record?.reasonCode ?? ""}
+                            onValueChange={(v) =>
+                              handleMark(student.id, current!, v as AttendanceReasonCode)
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-36 text-xs">
+                              <SelectValue placeholder="Reason" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ATTENDANCE_REASON_CODES.map((r) => (
+                                <SelectItem key={r.value} value={r.value}>
+                                  {r.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
+              <TablePagination
+                page={markPage}
+                totalPages={markTotalPages}
+                onPageChange={setMarkPage}
+                totalItems={classStudents.length}
+              />
+              </>
             )}
           </CardContent>
         </Card>
@@ -260,13 +347,12 @@ export function AttendancePage() {
                 </div>
 
                 {historyTotalPages > 1 && (
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="hidden sm:inline text-sm text-muted-foreground">Page {historyPage} of {historyTotalPages}</span>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" disabled={historyPage <= 1} onClick={() => setHistoryPage(historyPage - 1)}>Previous</Button>
-                      <Button size="sm" variant="outline" disabled={historyPage >= historyTotalPages} onClick={() => setHistoryPage(historyPage + 1)}>Next</Button>
-                    </div>
-                  </div>
+                  <TablePagination
+                    page={historyPage}
+                    totalPages={historyTotalPages}
+                    onPageChange={setHistoryPage}
+                    totalItems={historyRecords.length}
+                  />
                 )}
               </>
             )}

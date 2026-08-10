@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft,
   Users,
   GraduationCap,
   Clock,
@@ -11,17 +10,21 @@ import {
   Check,
   X,
   Shield,
-  StickyNote,
-  MoreHorizontal,
+  Sparkles,
   Play,
   Award,
-  ThumbsUp,
-  ThumbsDown,
+  Archive,
+  RotateCcw,
+  MoreHorizontal,
+  LayoutGrid,
+  ArrowLeft,
+  ClipboardList,
+  BookOpen,
+  Grid3x3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HintTooltip } from "@/components/ui/hint-tooltip";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -57,35 +61,55 @@ import {
 } from "@/components/ui/dialog";
 import { useAppStore } from "@/store";
 import { getStudentDisplayName, getTeacherDisplayName } from "@/lib/displayHelpers";
-import { cn, DAY_SHORT, DAY_ORDER, getLocalToday, isIsoDateString } from "@/lib/utils";
+import { cn, DAY_SHORT, getLocalToday, isIsoDateString } from "@/lib/utils";
 import {
   STUDENT_TASK_STATUS_ORDER,
   studentTaskStatusLabel,
   studentTaskStatusSelectClass,
 } from "@/lib/studentTaskStatus";
-import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
+import { deadlineDay } from "@/lib/taskUtils";
+import { dayOfWeekFromDate, getOccurrencesOnDate, getScheduledDatesInRange, formatOccurrenceTime } from "@/lib/scheduleUtils";
+import { findSessionNote } from "@/lib/sessionNotesUtils";
 import { AddExistingStudentDialog } from "@/features/classes/AddExistingStudentDialog";
 import { StudentFormDialog } from "@/features/students/StudentFormDialog";
 import { StudentImportDialog } from "@/features/students/StudentImportDialog";
-import { ClassTaskFormDialog } from "@/features/tasks/ClassTaskFormDialog";
 import { TaskProgressDialog } from "@/features/tasks/TaskProgressDialog";
-import { BehaviourFormDialog } from "@/features/behaviour/BehaviourFormDialog";
-import { ClassStudentBehaviourListDialog } from "@/features/behaviour/ClassStudentBehaviourListDialog";
+import { TaskScoreInput, type TaskScoreUpdate } from "@/features/tasks/TaskScoreInput";
+import { isRubricMode } from "@/lib/taskScoringUtils";
 import { StudentRosterTable } from "@/features/classes/StudentRosterTable";
 import { ClassTasksSection } from "@/features/classes/ClassTasksSection";
+import { ClassUnitsSection } from "@/features/classes/ClassUnitsSection";
+import { ClassGradebookGrid } from "@/features/assessment/ClassGradebookGrid";
+import { ClassTermGradesSection } from "@/features/assessment/ClassTermGradesSection";
+import { ClassSessionNotesCard } from "@/features/classes/ClassSessionNotesCard";
+import { ClassOverviewTab } from "@/features/classes/ClassOverviewTab";
+import { ClassIncompleteSection, useClassIncompleteCount } from "@/features/classes/ClassIncompleteSection";
+import { SessionStatusBadge } from "@/features/classes/SessionStatusBadge";
+import {
+  getEffectiveSessionStatus,
+  shouldAutoCompleteSession,
+} from "@/lib/sessionUtils";
 import type {
   AttendanceStatus,
-  BehaviourRecord,
   ClassTask,
   StudentTaskRecord,
   StudentTaskStatus,
 } from "@/types";
+import { pointsByStudent, skillsForClassToolbar } from "@/lib/pointsUtils";
+import { resolveSeatGrid, studentsFromSeatGrid } from "@/lib/seatingUtils";
+import { getAttendanceAlerts } from "@/lib/attentionUtils";
+import { useClassKeyboardShortcuts } from "@/hooks/useClassKeyboardShortcuts";
+import { showUndoToast } from "@/lib/undoToast";
+import { isArchived } from "@/lib/archiveUtils";
+import type { AttendanceReasonCode, BehaviourSkill } from "@/types";
 
 export function ClassDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get("date");
+  const eventIdParam = searchParams.get("eventId");
+  const occurrenceParam = searchParams.get("occurrence");
   const classes = useAppStore((s) => s.classes);
   const students = useAppStore((s) => s.students);
   const teachers = useAppStore((s) => s.teachers);
@@ -93,40 +117,40 @@ export function ClassDetailPage() {
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
   const attendance = useAppStore((s) => s.attendance);
-  const behaviour = useAppStore((s) => s.behaviour);
+  const pointEvents = useAppStore((s) => s.pointEvents);
+  const classSessionNotes = useAppStore((s) => s.classSessionNotes);
+  const classScheduleEvents = useAppStore((s) => s.classScheduleEvents);
+  const classSessionExceptions = useAppStore((s) => s.classSessionExceptions);
   const addAttendance = useAppStore((s) => s.addAttendance);
   const updateAttendance = useAppStore((s) => s.updateAttendance);
+  const deleteAttendance = useAppStore((s) => s.deleteAttendance);
+  const behaviourSkills = useAppStore((s) => s.behaviourSkills);
+  const addPointEvent = useAppStore((s) => s.addPointEvent);
+  const deletePointEvent = useAppStore((s) => s.deletePointEvent);
   const updateStudentTaskRecord = useAppStore((s) => s.updateStudentTaskRecord);
-  const addBehaviour = useAppStore((s) => s.addBehaviour);
+  const upsertClassSession = useAppStore((s) => s.upsertClassSession);
   const deleteClassTask = useAppStore((s) => s.deleteClassTask);
   const archiveClassTask = useAppStore((s) => s.archiveClassTask);
   const unarchiveClassTask = useAppStore((s) => s.unarchiveClassTask);
+  const archiveClass = useAppStore((s) => s.archiveClass);
+  const restoreClass = useAppStore((s) => s.restoreClass);
+  const [archiveClassOpen, setArchiveClassOpen] = useState(false);
 
   const [addExistingOpen, setAddExistingOpen] = useState(false);
   const [createStudentOpen, setCreateStudentOpen] = useState(false);
   const [importStudentsOpen, setImportStudentsOpen] = useState(false);
-  const [taskFormOpen, setTaskFormOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<ClassTask | null>(null);
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<ClassTask | null>(null);
   const [progressRecord, setProgressRecord] = useState<StudentTaskRecord | null>(null);
+  const [progressTask, setProgressTask] = useState<ClassTask | null>(null);
   const [progressStudentName, setProgressStudentName] = useState("");
-  const [progressTaskTitle, setProgressTaskTitle] = useState("");
-  const [progressMaxScore, setProgressMaxScore] = useState<number | null | undefined>();
-  const [behaviourOpen, setBehaviourOpen] = useState(false);
-  const [behaviourStudentId, setBehaviourStudentId] = useState<string | undefined>();
-  const [behaviourEditingRecord, setBehaviourEditingRecord] = useState<BehaviourRecord | null>(null);
-  const [behaviourListOpen, setBehaviourListOpen] = useState(false);
-  const [behaviourListStudentId, setBehaviourListStudentId] = useState<string | undefined>();
   const [randomPickerOpen, setRandomPickerOpen] = useState(false);
   const [randomStudentId, setRandomStudentId] = useState<string | null>(null);
   const [randomCycleShownIds, setRandomCycleShownIds] = useState<string[]>([]);
-  const [randomMode, setRandomMode] = useState<"updates" | "reward">("updates");
   const [quickAttendance, setQuickAttendance] = useState<AttendanceStatus | null>(null);
-  const [quickRewardPoint, setQuickRewardPoint] = useState<1 | -1 | null>(null);
-  const [quickRewardNote, setQuickRewardNote] = useState("");
-  const [quickTaskUpdates, setQuickTaskUpdates] = useState<
-    Record<string, { recordId: string; status: StudentTaskStatus; score: string }>
+  const [quickTaskStatuses, setQuickTaskStatuses] = useState<
+    Record<string, { recordId: string; status: StudentTaskStatus }>
   >({});
+  const [rosterSelectedId, setRosterSelectedId] = useState<string | null>(null);
 
   const todayStr = getLocalToday();
   const [attendanceDate, setAttendanceDate] = useState(() =>
@@ -159,6 +183,58 @@ export function ClassDetailPage() {
   );
 
   const cls = classes.find((c) => c.id === id);
+  const incompleteCount = useClassIncompleteCount(id ?? "");
+  const classIsArchived = cls ? isArchived(cls) : false;
+
+  const dayOccurrences = useMemo(() => {
+    if (!cls) return [];
+    return getOccurrencesOnDate(cls.id, attendanceDate, classScheduleEvents, classSessionExceptions);
+  }, [cls, attendanceDate, classScheduleEvents, classSessionExceptions]);
+
+  const activeOccurrence = useMemo(() => {
+    if (eventIdParam) {
+      const match = dayOccurrences.find(
+        (o) => o.eventId === eventIdParam && o.occurrenceDate === (occurrenceParam ?? o.occurrenceDate)
+      );
+      if (match) return match;
+    }
+    return dayOccurrences[0];
+  }, [dayOccurrences, eventIdParam, occurrenceParam]);
+
+  const sessionRecord = useMemo(
+    () =>
+      findSessionNote(
+        classSessionNotes,
+        cls?.id ?? "",
+        attendanceDate,
+        activeOccurrence?.eventId,
+        activeOccurrence?.occurrenceDate
+      ),
+    [cls?.id, attendanceDate, classSessionNotes, activeOccurrence]
+  );
+
+  const sessionHighlightDates = useMemo(() => {
+    if (!cls) return [];
+    const start = new Date(`${attendanceDate}T12:00:00`);
+    start.setMonth(start.getMonth() - 2);
+    const end = new Date(`${attendanceDate}T12:00:00`);
+    end.setMonth(end.getMonth() + 4);
+    return getScheduledDatesInRange(
+      cls.id,
+      classScheduleEvents,
+      classSessionExceptions,
+      start.toISOString().slice(0, 10),
+      end.toISOString().slice(0, 10)
+    );
+  }, [cls, attendanceDate, classScheduleEvents, classSessionExceptions]);
+
+  const sessionContext = useMemo(
+    () => ({
+      eventId: activeOccurrence?.eventId,
+      occurrenceDate: activeOccurrence?.occurrenceDate ?? attendanceDate,
+    }),
+    [activeOccurrence, attendanceDate]
+  );
 
   const activeTasksForClass = useMemo(
     () =>
@@ -181,29 +257,6 @@ export function ClassDetailPage() {
     [attendance, cls?.id, attendanceDate]
   );
 
-  const behaviourNoteCountByStudent = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!cls?.id) return map;
-    for (const b of behaviour) {
-      if (b.classId !== cls.id) continue;
-      map.set(b.studentId, (map.get(b.studentId) ?? 0) + 1);
-    }
-    return map;
-  }, [behaviour, cls?.id]);
-
-  const rewardPointsByStudent = useMemo(() => {
-    const out = new Map<string, number>();
-    if (!cls?.id) return out;
-    for (const b of behaviour) {
-      if (b.classId !== cls.id) continue;
-      if (!b.actionTaken?.startsWith("reward_point:")) continue;
-      const delta = b.actionTaken.endsWith(":+1") ? 1 : b.actionTaken.endsWith(":-1") ? -1 : 0;
-      if (!delta) continue;
-      out.set(b.studentId, (out.get(b.studentId) ?? 0) + delta);
-    }
-    return out;
-  }, [behaviour, cls?.id]);
-
   const recordByTaskAndStudent = useMemo(() => {
     const map = new Map<string, StudentTaskRecord>();
     for (const r of studentTaskRecords) {
@@ -221,21 +274,6 @@ export function ClassDetailPage() {
   };
 
   const attendanceStatuses: AttendanceStatus[] = ["present", "absent", "late", "excused"];
-  const negativeBehaviourTemplates = [
-    "Sleeping in class",
-    "Did not do classwork",
-    "Off-task / distracted others",
-    "Late to class",
-    "Disrespectful language",
-  ];
-  const positiveBehaviourTemplates = [
-    "Excellent participation",
-    "Helped classmates",
-    "Completed all classwork",
-    "Stayed focused and on task",
-    "Showed leadership",
-  ];
-
   const attendanceBtnClass: Record<AttendanceStatus, string> = {
     present: "bg-emerald-100 text-emerald-800 ring-emerald-500",
     absent: "bg-red-100 text-red-800 ring-red-500",
@@ -250,82 +288,311 @@ export function ClassDetailPage() {
     excused: Shield,
   };
 
-  const behaviourListStudentName = useMemo(() => {
-    if (!behaviourListStudentId) return "";
-    const s = students.find((x) => x.id === behaviourListStudentId);
-    return s ? getStudentDisplayName(s) : "Student";
-  }, [behaviourListStudentId, students]);
-
   const mainTeacher = teachers.find((t) => t.id === (cls?.teacherId ?? ""));
   const coTeachers = teachers.filter((t) => (cls?.coTeacherIds ?? []).includes(t.id));
   const classStudents = useMemo(() => {
-    const set = new Set(cls?.studentIds ?? []);
-    return students
-      .filter((s) => set.has(s.id))
-      .sort((a, b) => getStudentDisplayName(a).localeCompare(getStudentDisplayName(b)));
-  }, [students, cls?.studentIds]);
-  const rewardLeaderboard = useMemo(() => {
+    if (!cls) return [];
+    const grid = resolveSeatGrid(cls, cls.studentIds);
+    return studentsFromSeatGrid(students, grid);
+  }, [students, cls]);
+
+  const pointsTodayByStudent = useMemo(() => {
+    if (!cls?.id) return new Map<string, number>();
+    const todayEvents = pointEvents.filter(
+      (e) => e.classId === cls.id && e.date === attendanceDate
+    );
+    return pointsByStudent(todayEvents, classStudents.map((s) => s.id));
+  }, [pointEvents, cls?.id, attendanceDate, classStudents]);
+
+  const pointsLeaderboard = useMemo(() => {
     return classStudents
       .map((s) => ({
         id: s.id,
         name: getStudentDisplayName(s),
-        points: rewardPointsByStudent.get(s.id) ?? 0,
+        points: pointsTodayByStudent.get(s.id) ?? 0,
       }))
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
-  }, [classStudents, rewardPointsByStudent]);
+  }, [classStudents, pointsTodayByStudent]);
   const subject = subjects.find((s) => s.id === (cls?.subjectId ?? ""));
-  const sortedSchedule = [...(cls?.schedule ?? [])].sort(
-    (a, b) => DAY_ORDER.indexOf(a.dayOfWeek) - DAY_ORDER.indexOf(b.dayOfWeek)
+
+  useEffect(() => {
+    if (!cls || !activeOccurrence || sessionRecord) return;
+    upsertClassSession(cls.id, attendanceDate, {
+      eventId: activeOccurrence.eventId,
+      occurrenceDate: activeOccurrence.occurrenceDate,
+      status: "planned",
+    });
+  }, [attendanceDate, cls, activeOccurrence, sessionRecord, upsertClassSession]);
+
+  useEffect(() => {
+    if (!cls || !activeOccurrence || classIsArchived) return;
+    const maybeAutoComplete = () => {
+      if (!shouldAutoCompleteSession(sessionRecord, activeOccurrence)) return;
+      upsertClassSession(cls.id, attendanceDate, {
+        eventId: activeOccurrence.eventId,
+        occurrenceDate: activeOccurrence.occurrenceDate,
+        status: "completed",
+        completedAt: new Date().toISOString(),
+      });
+    };
+    maybeAutoComplete();
+    const id = window.setInterval(maybeAutoComplete, 60_000);
+    return () => window.clearInterval(id);
+  }, [
+    attendanceDate,
+    cls,
+    activeOccurrence,
+    classIsArchived,
+    sessionRecord,
+    upsertClassSession,
+  ]);
+
+  const toolbarSkills = useMemo(
+    () => (cls ? skillsForClassToolbar(behaviourSkills, cls) : []),
+    [behaviourSkills, cls]
   );
 
+  const attendanceAlerts = useMemo(
+    () =>
+      cls
+        ? getAttendanceAlerts(classStudents, cls.id, attendance)
+        : [],
+    [cls, classStudents, attendance]
+  );
+
+  const awardSkillToStudent = useCallback(
+    (studentId: string, skill: BehaviourSkill) => {
+      if (classIsArchived) return;
+      const eventId = addPointEvent({
+        studentId,
+        skillId: skill.id,
+        classId: cls?.id ?? "",
+        date: attendanceDate,
+        points: skill.points,
+      });
+      const st = classStudents.find((s) => s.id === studentId);
+      const sign = skill.points > 0 ? "+" : "";
+      showUndoToast(
+        `${sign}${skill.points} ${skill.name} → ${st ? getStudentDisplayName(st) : "student"}`,
+        () => deletePointEvent(eventId)
+      );
+    },
+    [
+      addPointEvent,
+      deletePointEvent,
+      cls?.id,
+      attendanceDate,
+      classStudents,
+      classIsArchived,
+    ]
+  );
+
+  const awardSkillToStudents = useCallback(
+    (studentIds: string[], skill: BehaviourSkill) => {
+      if (classIsArchived) return;
+      if (studentIds.length === 0) return;
+      const eventIds = studentIds.map((studentId) =>
+        addPointEvent({
+          studentId,
+          skillId: skill.id,
+          classId: cls?.id ?? "",
+          date: attendanceDate,
+          points: skill.points,
+        })
+      );
+      const sign = skill.points > 0 ? "+" : "";
+      const soleStudent =
+        studentIds.length === 1
+          ? classStudents.find((s) => s.id === studentIds[0])
+          : undefined;
+      const label =
+        soleStudent != null
+          ? `${sign}${skill.points} ${skill.name} → ${getStudentDisplayName(soleStudent)}`
+          : `${sign}${skill.points} ${skill.name} → ${studentIds.length} students`;
+      showUndoToast(label, () => eventIds.forEach((id) => deletePointEvent(id)));
+    },
+    [
+      addPointEvent,
+      deletePointEvent,
+      cls?.id,
+      attendanceDate,
+      classStudents,
+      classIsArchived,
+    ]
+  );
+
+  const cycleNextStudent = useCallback(() => {
+    if (classStudents.length === 0) return;
+    const currentIdx = rosterSelectedId
+      ? classStudents.findIndex((s) => s.id === rosterSelectedId)
+      : -1;
+    const next = classStudents[(currentIdx + 1) % classStudents.length];
+    if (next) setRosterSelectedId(next.id);
+  }, [classStudents, rosterSelectedId]);
+
   const markAttendance = useCallback(
-    (studentId: string, status: AttendanceStatus) => {
+    (studentId: string, status: AttendanceStatus, reasonCode?: AttendanceReasonCode) => {
+      if (classIsArchived) return;
       const existing = dayAttendanceRows.find((a) => a.studentId === studentId);
+      const prevStatus = existing?.status ?? null;
+      const prevReason = existing?.reasonCode;
       if (existing) {
-        updateAttendance(existing.id, { status });
+        updateAttendance(existing.id, { status, reasonCode });
+        showUndoToast(`Attendance: ${status}`, () => {
+          if (prevStatus) {
+            updateAttendance(existing.id, { status: prevStatus, reasonCode: prevReason });
+          } else {
+            deleteAttendance(existing.id);
+          }
+        });
       } else {
-        addAttendance({
+        const newId = addAttendance({
           studentId,
           classId: cls?.id ?? "",
           date: attendanceDate,
           status,
+          reasonCode,
         });
+        showUndoToast(`Attendance: ${status}`, () => deleteAttendance(newId));
       }
     },
-    [dayAttendanceRows, updateAttendance, addAttendance, cls?.id, attendanceDate]
+    [
+      dayAttendanceRows,
+      updateAttendance,
+      addAttendance,
+      deleteAttendance,
+      cls?.id,
+      attendanceDate,
+      classIsArchived,
+    ]
   );
 
-  const onTaskStatusChange = useCallback(
-    (recordId: string, status: StudentTaskStatus) => {
-      updateStudentTaskRecord(recordId, { status });
-    },
-    [updateStudentTaskRecord]
-  );
+  useClassKeyboardShortcuts({
+    enabled: !!cls && !classIsArchived,
+    toolbarSkills,
+    selectedStudentId: rosterSelectedId,
+    onMarkPresent: (id) => markAttendance(id, "present"),
+    onAwardSkill: awardSkillToStudent,
+    onNextStudent: cycleNextStudent,
+  });
 
-  const onTaskScoreBlur = useCallback(
-    (record: StudentTaskRecord, raw: string) => {
-      const t = raw.trim();
-      const next = t === "" ? null : Number(t);
-      if (next !== record.score && (t === "" || Number.isFinite(next))) {
-        updateStudentTaskRecord(record.id, { score: next });
+  const onTaskScoreUpdate = useCallback(
+    (record: StudentTaskRecord, update: TaskScoreUpdate) => {
+      if (classIsArchived) return;
+      const patch: Partial<StudentTaskRecord> = {};
+      if (update.score !== undefined && update.score !== record.score) patch.score = update.score;
+      if (update.letterGrade !== undefined && update.letterGrade !== record.letterGrade) {
+        patch.letterGrade = update.letterGrade;
+      }
+      if ("criterionScores" in update) {
+        const prev = record.criterionScores ?? null;
+        const next = update.criterionScores ?? null;
+        if (JSON.stringify(next) !== JSON.stringify(prev)) {
+          patch.criterionScores = update.criterionScores ?? undefined;
+        }
+      }
+      if (Object.keys(patch).length > 0) {
+        updateStudentTaskRecord(record.id, patch);
       }
     },
-    [updateStudentTaskRecord]
+    [updateStudentTaskRecord, classIsArchived]
   );
 
   const openProgress = (record: StudentTaskRecord, task: ClassTask) => {
+    if (classIsArchived) return;
     const st = students.find((s) => s.id === record.studentId);
     setProgressStudentName(st ? getStudentDisplayName(st) : "Student");
-    setProgressTaskTitle(task.title);
-    setProgressMaxScore(task.maxScore);
+    setProgressTask(task);
     setProgressRecord(record);
   };
 
-  const openBehaviourForStudent = (studentId: string) => {
-    setBehaviourEditingRecord(null);
-    setBehaviourStudentId(studentId);
-    setBehaviourOpen(true);
-  };
+  type ClassTab = "overview" | "units" | "tasks" | "incomplete" | "gradebook" | "term-grades";
+
+  const isSessionView = !!(dateParam || eventIdParam);
+
+  const classTab: ClassTab = useMemo(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "grades") return "term-grades";
+    if (
+      tab === "units" ||
+      tab === "tasks" ||
+      tab === "incomplete" ||
+      tab === "gradebook" ||
+      tab === "term-grades"
+    ) {
+      return tab;
+    }
+    return "overview";
+  }, [searchParams]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "session" || tab === "schedule") {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("tab");
+          return next;
+        },
+        { replace: true }
+      );
+      if (tab === "schedule") {
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${window.location.search}#schedule`
+        );
+      }
+    }
+    if (tab === "grades") {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set("tab", "term-grades");
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, setSearchParams]);
+
+  const setClassTab = useCallback(
+    (tab: ClassTab) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("date");
+          next.delete("eventId");
+          next.delete("occurrence");
+          if (tab === "overview") next.delete("tab");
+          else next.set("tab", tab);
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const exitSessionView = useCallback(() => {
+    const from = searchParams.get("from");
+    if (from?.startsWith("/")) {
+      navigate(from);
+      return;
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("date");
+        next.delete("eventId");
+        next.delete("occurrence");
+        next.delete("tab");
+        next.delete("from");
+        return next;
+      },
+      { replace: true }
+    );
+  }, [navigate, searchParams, setSearchParams]);
 
   const pickRandomStudentId = (ids: string[]) => {
     if (ids.length === 0) return null;
@@ -335,28 +602,21 @@ export function ClassDetailPage() {
 
   const setupQuickPickerState = (studentId: string) => {
     setQuickAttendance(getAttendanceStatus(studentId));
-    setQuickRewardPoint(null);
-    setQuickRewardNote("");
-    const updates: Record<string, { recordId: string; status: StudentTaskStatus; score: string }> = {};
+    const statuses: Record<string, { recordId: string; status: StudentTaskStatus }> = {};
     for (const task of activeTasksForClass) {
       const rec = getTaskRecord(task.id, studentId);
       if (!rec) continue;
-      updates[task.id] = {
-        recordId: rec.id,
-        status: rec.status,
-        score: rec.score != null ? String(rec.score) : "",
-      };
+      statuses[task.id] = { recordId: rec.id, status: rec.status };
     }
-    setQuickTaskUpdates(updates);
+    setQuickTaskStatuses(statuses);
   };
 
-  const openRandomStudentPicker = (mode: "updates" | "reward" = "updates") => {
+  const openRandomStudentPicker = () => {
     const nextId = pickRandomStudentId(classStudents.map((s) => s.id));
     if (!nextId) {
       toast.info("No students in this class yet.");
       return;
     }
-    setRandomMode(mode);
     setRandomCycleShownIds([nextId]);
     setRandomStudentId(nextId);
     setupQuickPickerState(nextId);
@@ -364,45 +624,13 @@ export function ClassDetailPage() {
   };
 
   const saveQuickUpdates = () => {
+    if (classIsArchived) return;
     if (!randomStudentId) return;
-    if (randomMode === "reward") {
-      if (quickRewardPoint === null) {
-        toast.info("Choose +1 or -1 before saving.");
-        return;
-      }
-      const note = quickRewardNote.trim();
-      if (!note) {
-        toast.info("Add a behaviour note/feedback before saving.");
-        return;
-      }
-      addBehaviour({
-        studentId: randomStudentId,
-        classId: cls?.id,
-        subjectId: cls?.subjectId || undefined,
-        date: attendanceDate || todayStr,
-        category: quickRewardPoint > 0 ? "participation" : "conduct",
-        severity: quickRewardPoint > 0 ? "positive" : "minor",
-        description:
-          quickRewardPoint > 0
-            ? `[Reward +1] ${note}`
-            : `[Reward -1] ${note}`,
-        actionTaken: `reward_point:${quickRewardPoint > 0 ? "+1" : "-1"}`,
-      });
-      toast.success("Reward point saved.");
-      setQuickRewardPoint(null);
-      setQuickRewardNote("");
-      return;
-    }
     if (quickAttendance) {
       markAttendance(randomStudentId, quickAttendance);
     }
-    Object.values(quickTaskUpdates).forEach((u) => {
-      const trimmed = u.score.trim();
-      const score = trimmed === "" ? null : Number(trimmed);
-      updateStudentTaskRecord(u.recordId, {
-        status: u.status,
-        score: trimmed === "" || Number.isFinite(score) ? score : null,
-      });
+    Object.values(quickTaskStatuses).forEach((u) => {
+      updateStudentTaskRecord(u.recordId, { status: u.status });
     });
     toast.success("Quick updates saved.");
   };
@@ -437,34 +665,6 @@ export function ClassDetailPage() {
     setupQuickPickerState(nextId);
   };
 
-  const openBehaviourListForStudent = (studentId: string) => {
-    setBehaviourListStudentId(studentId);
-    setBehaviourListOpen(true);
-  };
-
-  const handleBehaviourOpenChange = (open: boolean) => {
-    setBehaviourOpen(open);
-    if (!open) {
-      setBehaviourStudentId(undefined);
-      setBehaviourEditingRecord(null);
-    }
-  };
-
-  const handleBehaviourListOpenChange = (open: boolean) => {
-    setBehaviourListOpen(open);
-    if (!open) setBehaviourListStudentId(undefined);
-  };
-
-  const handleAddNoteFromList = (studentId: string) => {
-    openBehaviourForStudent(studentId);
-  };
-
-  const handleEditNoteFromList = (record: BehaviourRecord) => {
-    setBehaviourEditingRecord(record);
-    setBehaviourStudentId(record.studentId);
-    setBehaviourOpen(true);
-  };
-
   const handleDeleteTask = () => {
     if (deleteTaskTarget) {
       deleteClassTask(deleteTaskTarget.id);
@@ -484,95 +684,306 @@ export function ClassDetailPage() {
     );
   }
 
+  const isFocusedTab =
+    classTab === "units" ||
+    classTab === "tasks" ||
+    classTab === "gradebook" ||
+    classTab === "term-grades" ||
+    classTab === "incomplete";
+  const sessionStatus = getEffectiveSessionStatus(
+    sessionRecord,
+    activeOccurrence
+      ? { date: activeOccurrence.date, endTime: activeOccurrence.endTime }
+      : undefined
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-4">
-          <Link to="/classes">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
           <div>
-            <h2 className="text-2xl font-bold">{cls.name}</h2>
-            {(cls.classroomNumber || subject) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-bold tracking-tight text-gradient">{cls.name}</h2>
+              {classIsArchived && <Badge variant="outline">Archived</Badge>}
+              {isSessionView && sessionRecord?.lessonPrepared && (
+                <Badge variant="secondary">Lesson prepared</Badge>
+              )}
+              {isSessionView && activeOccurrence && (
+                <Badge variant="secondary">
+                  {formatOccurrenceTime(activeOccurrence.startTime, activeOccurrence.endTime)}
+                </Badge>
+              )}
+              {isSessionView && activeOccurrence && (
+                <SessionStatusBadge
+                  classId={cls.id}
+                  sessionDate={attendanceDate}
+                  eventId={sessionContext.eventId}
+                  occurrenceDate={sessionContext.occurrenceDate}
+                  status={sessionStatus}
+                  disabled={classIsArchived}
+                />
+              )}
+              {isSessionView && !activeOccurrence && (
+                <Badge variant="outline">Unscheduled date</Badge>
+              )}
+            </div>
+            {isSessionView && (cls.classroomNumber || subject || activeOccurrence) && (
               <p className="text-sm text-muted-foreground">
                 {cls.classroomNumber && <span>Room {cls.classroomNumber}</span>}
                 {cls.classroomNumber && subject && <span aria-hidden> · </span>}
                 {subject && <span>{subject.name}</span>}
+                {activeOccurrence?.title && (
+                  <>
+                    {(cls.classroomNumber || subject) && <span aria-hidden> · </span>}
+                    <span>{activeOccurrence.title}</span>
+                  </>
+                )}
               </p>
             )}
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <Link to={`/attendance?classId=${cls.id}`} className="hover:text-primary hover:underline">
-                Full attendance page
-              </Link>
-              <span aria-hidden className="text-border">·</span>
-              <Link to={`/behaviour?classId=${cls.id}`} className="hover:text-primary hover:underline">
-                All behaviour notes
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <GraduationCap className="h-4 w-4" /> Main teacher
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-semibold">
-              {mainTeacher ? getTeacherDisplayName(mainTeacher) : "Unassigned"}
-            </p>
-            {mainTeacher?.email && <p className="text-sm text-muted-foreground">{mainTeacher.email}</p>}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Users className="h-4 w-4" /> Students
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{classStudents.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Clock className="h-4 w-4" /> Schedule
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sortedSchedule.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No times set.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5 text-xs">
-                {sortedSchedule.map((entry) => (
-                  <span
-                    key={entry.id}
-                    className="rounded-md border border-border bg-muted/40 px-2 py-1"
-                  >
-                    {DAY_SHORT[entry.dayOfWeek]} {entry.startTime}–{entry.endTime}
-                  </span>
-                ))}
+            {!isSessionView && (subject || cls.classroomNumber) && (
+              <p className="text-sm text-muted-foreground">
+                {subject && <span>{subject.name}</span>}
+                {subject && cls.classroomNumber && <span aria-hidden> · </span>}
+                {cls.classroomNumber && <span>Room {cls.classroomNumber}</span>}
+              </p>
+            )}
+            {isSessionView && (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <Link to={`/attendance?classId=${cls.id}`} className="hover:text-primary hover:underline">
+                  Full attendance page
+                </Link>
+                <span aria-hidden className="text-border">·</span>
+                <Link to={`/points?classId=${cls.id}`} className="hover:text-primary hover:underline">
+                  Points history
+                </Link>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+        {!isFocusedTab && !isSessionView && classTab !== "overview" && (
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
+            {classIsArchived ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 sm:flex-none"
+                onClick={() => {
+                  restoreClass(cls.id);
+                  toast.success(`"${cls.name}" restored.`);
+                }}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Restore class
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" className="flex-1 sm:flex-none">
+                    <MoreHorizontal className="mr-2 h-4 w-4" />
+                    Class options
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setArchiveClassOpen(true)}
+                  >
+                    <Archive className="mr-2 h-4 w-4" />
+                    Archive class
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        )}
       </div>
 
-      {coTeachers.length > 0 && (
-        <Card>
+      {classIsArchived && isSessionView && (
+        <Card className="border-muted-foreground/25 bg-muted/30">
+          <CardContent className="py-4 text-sm text-muted-foreground">
+            This class is archived. You can review history below, but attendance, points, and tasks cannot be changed
+            until you restore it.
+          </CardContent>
+        </Card>
+      )}
+
+      {isSessionView && (
+        <Button type="button" variant="ghost" size="sm" className="-mt-2 h-8 px-2" onClick={exitSessionView}>
+          <ArrowLeft className="mr-1.5 h-4 w-4" />
+          Back to class
+        </Button>
+      )}
+
+      {!isSessionView && (
+      <div className="flex w-fit flex-wrap gap-1 rounded-lg border border-border bg-muted/30 p-1">
+        <Button
+          type="button"
+          variant={classTab === "overview" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("overview")}
+        >
+          <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
+          Overview
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "units" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("units")}
+        >
+          <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+          Units
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "tasks" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("tasks")}
+        >
+          Tasks
+          {activeTasksForClass.length > 0 && (
+            <span className="ml-1.5 rounded-full bg-background/80 px-1.5 text-xs tabular-nums">
+              {activeTasksForClass.length}
+            </span>
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "gradebook" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("gradebook")}
+        >
+          <Grid3x3 className="mr-1.5 h-3.5 w-3.5" />
+          Gradebook
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "term-grades" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("term-grades")}
+        >
+          <GraduationCap className="mr-1.5 h-3.5 w-3.5" />
+          Term grades
+        </Button>
+        <Button
+          type="button"
+          variant={classTab === "incomplete" ? "default" : "ghost"}
+          size="sm"
+          className="h-8 px-4 text-sm"
+          onClick={() => setClassTab("incomplete")}
+        >
+          <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
+          To-do
+          {incompleteCount > 0 && (
+            <span className="ml-1.5 rounded-full bg-background/80 px-1.5 text-xs tabular-nums">
+              {incompleteCount}
+            </span>
+          )}
+        </Button>
+      </div>
+      )}
+
+      {isSessionView ? (
+        <>
+      <ClassSessionNotesCard
+        classId={cls.id}
+        sessionDate={attendanceDate}
+        eventId={sessionContext.eventId}
+        occurrenceDate={sessionContext.occurrenceDate}
+        readOnly={classIsArchived}
+      />
+
+      <Card>
+        <CardContent className="space-y-5 p-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <GraduationCap className="h-4 w-4" />
+                Main teacher
+              </p>
+              <p className="font-semibold">
+                {mainTeacher ? getTeacherDisplayName(mainTeacher) : "Unassigned"}
+              </p>
+              {mainTeacher?.email && (
+                <p className="text-sm text-muted-foreground">{mainTeacher.email}</p>
+              )}
+            </div>
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Users className="h-4 w-4" />
+                Students
+              </p>
+              <p className="text-2xl font-bold">{classStudents.length}</p>
+            </div>
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                Sessions this day
+              </p>
+              {dayOccurrences.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No sessions scheduled this day.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 text-xs">
+                  {dayOccurrences.map((occ) => (
+                    <button
+                      key={`${occ.eventId}:${occ.occurrenceDate}`}
+                      type="button"
+                      className={cn(
+                        "rounded-md border px-2 py-1 transition-colors",
+                        activeOccurrence?.eventId === occ.eventId &&
+                          activeOccurrence.occurrenceDate === occ.occurrenceDate
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-muted/40 hover:bg-muted"
+                      )}
+                      onClick={() => {
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set("date", occ.date);
+                          next.set("eventId", occ.eventId);
+                          next.set("occurrence", occ.occurrenceDate);
+                          return next;
+                        });
+                      }}
+                    >
+                      {occ.title?.trim() || DAY_SHORT[dayOfWeekFromDate(occ.date)]}{" "}
+                      {formatOccurrenceTime(occ.startTime, occ.endTime)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {coTeachers.length > 0 && (
+            <div>
+              <p className="mb-2 text-sm font-medium text-muted-foreground">Co-teachers</p>
+              <div className="flex flex-wrap gap-2">
+                {coTeachers.map((t) => (
+                  <Badge key={t.id} variant="outline">
+                    {getTeacherDisplayName(t)}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </CardContent>
+      </Card>
+
+      {attendanceAlerts.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Co-teachers</CardTitle>
+            <CardTitle className="text-sm">Attendance alerts</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {coTeachers.map((t) => (
-              <Badge key={t.id} variant="outline">
-                {getTeacherDisplayName(t)}
+            {attendanceAlerts.map((a) => (
+              <Badge key={`${a.studentId}-${a.message}`} variant="outline" className="text-xs">
+                {a.studentName}: {a.message}
               </Badge>
             ))}
           </CardContent>
@@ -581,33 +992,24 @@ export function ClassDetailPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Class Session</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Use this sequence: start class, run student checks, then end with behaviour rewards.
-          </p>
+          <CardTitle className="text-base">Quick class check</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => openRandomStudentPicker("updates")}
-            disabled={classStudents.length === 0}
-            title="Start class with random quick updates"
-          >
-            <Play className="mr-1.5 h-4 w-4" />
-            Start class
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => openRandomStudentPicker("reward")}
-            disabled={classStudents.length === 0}
-            title="Random end-of-class reward round"
-          >
-            <Award className="mr-1.5 h-4 w-4" />
-            End class rewards
-          </Button>
-          <Button asChild type="button" variant="outline" title="Open behaviour notes for this class">
-            <Link to={`/behaviour?classId=${cls.id}`}>
-              <StickyNote className="mr-1.5 h-4 w-4" />
-              Behaviour notes
+          <HintTooltip content="Pick a random student for attendance and task updates.">
+            <span className="inline-flex">
+              <Button
+                onClick={() => openRandomStudentPicker()}
+                disabled={classIsArchived || classStudents.length === 0}
+              >
+                <Play className="mr-1.5 h-4 w-4" />
+                Random student check
+              </Button>
+            </span>
+          </HintTooltip>
+          <Button asChild type="button" variant="outline">
+            <Link to={`/points?classId=${cls.id}`}>
+              <Sparkles className="mr-1.5 h-4 w-4" />
+              Points history
             </Link>
           </Button>
         </CardContent>
@@ -616,35 +1018,35 @@ export function ClassDetailPage() {
       <Card>
         <CardHeader className="flex flex-col gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              Students
-            </CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Mark attendance and task progress for students in this class.
-            </p>
+            <HintTooltip content="Seating plan for points and attendance. Drag cards to match your room layout.">
+              <CardTitle className="flex w-fit items-center gap-2 text-lg">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                Students
+              </CardTitle>
+            </HintTooltip>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2">
-              <label htmlFor="class-attendance-date" className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                Attendance date
-              </label>
-              <Input
-                id="class-attendance-date"
-                type="date"
-                value={attendanceDate}
-                onChange={(e) => setAttendanceDateWithUrl(e.target.value)}
-                className="h-9 w-44"
-              />
-            </div>
+            <HintTooltip content="Attendance date for this session.">
+              <div className="w-fit">
+                <DatePicker
+                  id="class-attendance-date"
+                  value={attendanceDate}
+                  onChange={setAttendanceDateWithUrl}
+                  highlightDates={sessionHighlightDates}
+                  className="h-9 w-full sm:w-44"
+                />
+              </div>
+            </HintTooltip>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline">
-                  <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                  More
-                  <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
+              <HintTooltip content="Add or import students, or open full attendance and points pages.">
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" disabled={classIsArchived}>
+                    <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                    More
+                    <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </HintTooltip>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
                   <Link to={`/attendance?classId=${cls.id}`}>
@@ -653,9 +1055,9 @@ export function ClassDetailPage() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link to={`/behaviour?classId=${cls.id}`}>
-                    <StickyNote className="mr-2 h-4 w-4" />
-                    All behaviour notes
+                  <Link to={`/points?classId=${cls.id}`}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Points history
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setAddExistingOpen(true)}>
@@ -674,223 +1076,38 @@ export function ClassDetailPage() {
             </DropdownMenu>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Attendance: ✓ present · ✗ absent · clock late · shield excused. Tasks: set status and points; use ··· for feedback and dates.
-            Notes: one button opens the list for this class (badge = count); use Add note there to create a new entry.
-          </p>
-          <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
-            <StudentRosterTable
-              students={classStudents}
-              activeTasks={activeTasksForClass}
-              studentTaskRecords={studentTaskRecords}
-              dayAttendanceRows={dayAttendanceRows}
-              behaviourNoteCountByStudent={behaviourNoteCountByStudent}
-              onMarkAttendance={markAttendance}
-              onTaskStatusChange={onTaskStatusChange}
-              onTaskScoreBlur={onTaskScoreBlur}
-              onOpenProgress={openProgress}
-              onOpenBehaviourList={openBehaviourListForStudent}
-              archivedTaskCount={archivedTasksForClass.length}
-            />
-          </div>
-
-          <div className="md:hidden space-y-3">
-            {classStudents.map((student) => {
-              const noteCount = behaviourNoteCountByStudent.get(student.id) ?? 0;
-              const currentAttendanceStatus = getAttendanceStatus(student.id);
-
-              return (
-                <div key={student.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
-                  {/* Section 1 — header */}
-                  <div className="flex items-center justify-between gap-3">
-                    <Link
-                      to={`/students/${student.id}`}
-                      className="font-semibold text-foreground hover:text-primary transition-colors"
-                    >
-                      {getStudentDisplayName(student)}
-                    </Link>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 px-2.5"
-                      onClick={() => openBehaviourListForStudent(student.id)}
-                      title="View notes for this class or add a new one"
-                    >
-                      <StickyNote className="h-3.5 w-3.5 shrink-0" />
-                      <span>Notes</span>
-                      {noteCount > 0 && (
-                        <Badge
-                          variant="secondary"
-                          className="rounded-sm px-1.5 text-[10px] tabular-nums"
-                        >
-                          {noteCount}
-                        </Badge>
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Section 2 — attendance */}
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground">Attendance</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {attendanceStatuses.map((status) => {
-                        const Icon = AttendanceIcon[status];
-                        const active = currentAttendanceStatus === status;
-
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            title={status}
-                            onClick={() => markAttendance(student.id, status)}
-                            className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-xs font-semibold transition-all",
-                              active
-                                ? `${attendanceBtnClass[status]} ring-2 ring-offset-1 ring-offset-background`
-                                : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
-                            )}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Section 3 — tasks */}
-                  {activeTasksForClass.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-muted-foreground">Tasks</p>
-                      <div className="space-y-2">
-                        {activeTasksForClass.map((task) => {
-                          const rec = getTaskRecord(task.id, student.id);
-                          const overdue = isTaskOverdue(task, todayStr);
-
-                          if (!rec) {
-                            return (
-                              <div
-                                key={task.id}
-                                className="rounded-lg border border-border/80 bg-muted/20 px-2 py-1.5 text-xs text-muted-foreground"
-                              >
-                                <span className="font-medium text-foreground">{task.title}</span> — syncing…
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <div
-                              key={task.id}
-                              className="flex flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-muted/20 px-2 py-1.5"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className="truncate text-xs font-medium text-foreground"
-                                  title={task.title}
-                                >
-                                  {task.title}
-                                  {overdue && (
-                                    <span className="ml-1 text-red-600 dark:text-red-400">(due)</span>
-                                  )}
-                                </p>
-                              </div>
-
-                              <Select
-                                value={rec.status}
-                                onValueChange={(v) =>
-                                  onTaskStatusChange(rec.id, v as StudentTaskStatus)
-                                }
-                              >
-                                <SelectTrigger
-                                  className={cn(
-                                    "h-8 w-37 shrink-0 text-xs",
-                                    studentTaskStatusSelectClass(rec.status)
-                                  )}
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {STUDENT_TASK_STATUS_ORDER.map((s) => (
-                                    <SelectItem key={s} value={s} className="text-xs">
-                                      {studentTaskStatusLabel[s]}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-
-                              <Input
-                                key={`${rec.id}-${rec.updatedAt}`}
-                                type="number"
-                                step={0.5}
-                                placeholder="Pts"
-                                className="h-8 w-16 text-xs"
-                                defaultValue={rec.score != null ? String(rec.score) : ""}
-                                title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
-                                onBlur={(e) => onTaskScoreBlur(rec, e.target.value)}
-                              />
-
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 shrink-0"
-                                title="Feedback, submitted date, full edit"
-                                onClick={() => openProgress(rec, task)}
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+        <CardContent className="space-y-3 overflow-visible">
+          <StudentRosterTable
+            cls={cls}
+            sessionDate={attendanceDate}
+            todayStr={todayStr}
+            students={classStudents}
+            activeTasks={activeTasksForClass}
+            studentTaskRecords={studentTaskRecords}
+            dayAttendanceRows={dayAttendanceRows}
+            pointsTodayByStudent={pointsTodayByStudent}
+            selectedStudentId={rosterSelectedId}
+            onSelectedStudentChange={setRosterSelectedId}
+            onMarkAttendance={markAttendance}
+            onAwardSkill={awardSkillToStudent}
+            onAwardSkillBulk={awardSkillToStudents}
+            readOnly={classIsArchived}
+          />
         </CardContent>
       </Card>
-
-      <ClassTasksSection
-        classId={cls.id}
-        activeTasks={activeTasksForClass}
-        archivedTasks={archivedTasksForClass}
-        studentTaskRecords={studentTaskRecords}
-        enrolledStudentIds={cls.studentIds}
-        onEditTask={(task) => {
-          setEditingTask(task);
-          setTaskFormOpen(true);
-        }}
-        onDeleteTask={(task) => setDeleteTaskTarget(task)}
-        onArchiveTask={(id) => {
-          archiveClassTask(id);
-          toast.success("Task archived.");
-        }}
-        onUnarchiveTask={(id) => {
-          unarchiveClassTask(id);
-          toast.success("Task restored.");
-        }}
-        onNewTask={() => {
-          setEditingTask(null);
-          setTaskFormOpen(true);
-        }}
-      />
 
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Award className="h-4 w-4" /> Reward progress
+            <Award className="h-4 w-4" /> Points today
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {rewardLeaderboard.length === 0 ? (
+          {pointsLeaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground">No students yet.</p>
           ) : (
             <div className="space-y-2">
-              {rewardLeaderboard.slice(0, 10).map((row) => (
+              {pointsLeaderboard.slice(0, 10).map((row) => (
                 <div
                   key={row.id}
                   className="flex items-center justify-between rounded-md border border-border bg-muted/20 px-3 py-2 text-sm"
@@ -908,15 +1125,45 @@ export function ClassDetailPage() {
                   </span>
                 </div>
               ))}
-              {rewardLeaderboard.length > 10 && (
+              {pointsLeaderboard.length > 10 && (
                 <p className="text-xs text-muted-foreground">
-                  Showing top 10. Open reward round to keep scoring.
+                  Showing top 10 for {attendanceDate}.
                 </p>
               )}
             </div>
           )}
         </CardContent>
       </Card>
+        </>
+      ) : classTab === "overview" ? (
+        <ClassOverviewTab cls={cls} />
+      ) : classTab === "units" ? (
+        <ClassUnitsSection classId={cls.id} readOnly={classIsArchived} />
+      ) : classTab === "tasks" ? (
+        <ClassTasksSection
+          classId={cls.id}
+          activeTasks={activeTasksForClass}
+          archivedTasks={archivedTasksForClass}
+          studentTaskRecords={studentTaskRecords}
+          enrolledStudentIds={cls.studentIds}
+          onDeleteTask={(task) => setDeleteTaskTarget(task)}
+          onArchiveTask={(id) => {
+            archiveClassTask(id);
+            toast.success("Task archived.");
+          }}
+          onUnarchiveTask={(id) => {
+            unarchiveClassTask(id);
+            toast.success("Task restored.");
+          }}
+          readOnly={classIsArchived}
+        />
+      ) : classTab === "incomplete" ? (
+        <ClassIncompleteSection classId={cls.id} />
+      ) : classTab === "gradebook" ? (
+        <ClassGradebookGrid cls={cls} readOnly={classIsArchived} />
+      ) : (
+        <ClassTermGradesSection cls={cls} readOnly={classIsArchived} />
+      )}
 
       <AddExistingStudentDialog
         open={addExistingOpen}
@@ -938,44 +1185,17 @@ export function ClassDetailPage() {
         lockToClass
       />
 
-      <ClassStudentBehaviourListDialog
-        open={behaviourListOpen}
-        onOpenChange={handleBehaviourListOpenChange}
-        classId={cls.id}
-        studentId={behaviourListStudentId}
-        studentName={behaviourListStudentName}
-        onAddNote={handleAddNoteFromList}
-        onEditNote={handleEditNoteFromList}
-      />
-
-      <BehaviourFormDialog
-        open={behaviourOpen}
-        onOpenChange={handleBehaviourOpenChange}
-        editingRecord={behaviourEditingRecord}
-        preselectedStudentId={behaviourStudentId}
-        preselectedClassId={cls.id}
-        preselectedSubjectId={cls.subjectId || undefined}
-      />
-
-      <ClassTaskFormDialog
-        open={taskFormOpen}
-        onOpenChange={(o) => {
-          setTaskFormOpen(o);
-          if (!o) setEditingTask(null);
-        }}
-        classId={cls.id}
-        editingTask={editingTask}
-      />
-
       <TaskProgressDialog
         open={!!progressRecord}
         onOpenChange={(o) => {
-          if (!o) setProgressRecord(null);
+          if (!o) {
+            setProgressRecord(null);
+            setProgressTask(null);
+          }
         }}
         record={progressRecord}
+        task={progressTask}
         studentName={progressStudentName}
-        taskTitle={progressTaskTitle}
-        maxScore={progressMaxScore}
       />
 
       <Dialog
@@ -985,10 +1205,8 @@ export function ClassDetailPage() {
           if (!open) {
             setRandomStudentId(null);
             setRandomCycleShownIds([]);
-            setQuickTaskUpdates({});
+            setQuickTaskStatuses({});
             setQuickAttendance(null);
-            setQuickRewardPoint(null);
-            setQuickRewardNote("");
           }
         }}
       >
@@ -996,9 +1214,7 @@ export function ClassDetailPage() {
           <DialogHeader>
             <DialogTitle>Random student picker</DialogTitle>
             <DialogDescription>
-              {randomMode === "reward"
-                ? "End-of-class reward mode. Give +1 / -1 points and move through the full class cycle."
-                : "Quick attendance + assignment update flow. Save and move to the next random student."}
+              Quick attendance and assignment updates. Save and move to the next random student.
             </DialogDescription>
             <p className="text-xs text-muted-foreground">
               Progress this cycle: {randomCycleShownIds.length} / {classStudents.length}
@@ -1024,91 +1240,7 @@ export function ClassDetailPage() {
                   </div>
                 </div>
 
-                {randomMode === "reward" ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">Reward points</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant={quickRewardPoint === 1 ? "default" : "outline"}
-                        className="gap-1.5"
-                        onClick={() => setQuickRewardPoint(1)}
-                      >
-                        <ThumbsUp className="h-4 w-4" />
-                        +1 Positive
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={quickRewardPoint === -1 ? "destructive" : "outline"}
-                        className="gap-1.5"
-                        onClick={() => setQuickRewardPoint(-1)}
-                      >
-                        <ThumbsDown className="h-4 w-4" />
-                        -1 Negative
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Current total: {rewardPointsByStudent.get(current.id) ?? 0}
-                    </p>
-                    <div className="space-y-1">
-                      {quickRewardPoint !== null && (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            Quick options
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {(quickRewardPoint > 0
-                              ? positiveBehaviourTemplates
-                              : negativeBehaviourTemplates
-                            ).map((template) => (
-                              <button
-                                key={template}
-                                type="button"
-                                onClick={() => setQuickRewardNote(template)}
-                                className={cn(
-                                  "rounded-md border px-2 py-1 text-xs transition-colors",
-                                  quickRewardNote === template
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border bg-background text-muted-foreground hover:bg-muted"
-                                )}
-                              >
-                                {template}
-                              </button>
-                            ))}
-                            <button
-                              type="button"
-                              onClick={() => setQuickRewardNote("")}
-                              className={cn(
-                                "rounded-md border px-2 py-1 text-xs transition-colors",
-                                quickRewardNote === ""
-                                  ? "border-primary bg-primary/10 text-primary"
-                                  : "border-border bg-background text-muted-foreground hover:bg-muted"
-                              )}
-                            >
-                              Custom
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Teacher note / feedback
-                      </p>
-                      <Textarea
-                        value={quickRewardNote}
-                        onChange={(e) => setQuickRewardNote(e.target.value)}
-                        rows={2}
-                        placeholder={
-                          quickRewardPoint === 1
-                            ? "e.g. Helped a classmate and stayed focused."
-                            : quickRewardPoint === -1
-                              ? "e.g. Sleeping in class / doing unrelated work."
-                              : "Describe the behaviour for this point."
-                        }
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
+                <>
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-muted-foreground">Attendance</p>
                       <div className="flex flex-wrap gap-1.5">
@@ -1154,8 +1286,9 @@ export function ClassDetailPage() {
                       ) : (
                         <div className="space-y-2">
                           {activeTasksForClass.map((task) => {
-                            const update = quickTaskUpdates[task.id];
-                            if (!update) {
+                            const statusUpdate = quickTaskStatuses[task.id];
+                            const rec = getTaskRecord(task.id, current.id);
+                            if (!statusUpdate || !rec) {
                               return (
                                 <div
                                   key={task.id}
@@ -1177,9 +1310,9 @@ export function ClassDetailPage() {
                                   </p>
                                 </div>
                                 <Select
-                                  value={update.status}
+                                  value={statusUpdate.status}
                                   onValueChange={(v) =>
-                                    setQuickTaskUpdates((prev) => ({
+                                    setQuickTaskStatuses((prev) => ({
                                       ...prev,
                                       [task.id]: { ...prev[task.id], status: v as StudentTaskStatus },
                                     }))
@@ -1188,7 +1321,7 @@ export function ClassDetailPage() {
                                   <SelectTrigger
                                     className={cn(
                                       "h-8 w-37 shrink-0 text-xs",
-                                      studentTaskStatusSelectClass(update.status)
+                                      studentTaskStatusSelectClass(statusUpdate.status)
                                     )}
                                   >
                                     <SelectValue />
@@ -1201,28 +1334,31 @@ export function ClassDetailPage() {
                                     ))}
                                   </SelectContent>
                                 </Select>
-                                <Input
-                                  type="number"
-                                  step={0.5}
-                                  placeholder="Pts"
-                                  className="h-8 w-16 text-xs"
-                                  value={update.score}
-                                  title={task.maxScore != null ? `Max ${task.maxScore}` : "Score"}
-                                  onChange={(e) =>
-                                    setQuickTaskUpdates((prev) => ({
-                                      ...prev,
-                                      [task.id]: { ...prev[task.id], score: e.target.value },
-                                    }))
-                                  }
-                                />
+                                {isRubricMode(task) ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-xs"
+                                    onClick={() => openProgress(rec, task)}
+                                  >
+                                    Score rubric
+                                  </Button>
+                                ) : (
+                                  <TaskScoreInput
+                                    task={task}
+                                    record={rec}
+                                    compact
+                                    onScoreUpdate={onTaskScoreUpdate}
+                                  />
+                                )}
                               </div>
                             );
                           })}
                         </div>
                       )}
                     </div>
-                  </>
-                )}
+                </>
               </div>
             );
           })()}
@@ -1244,6 +1380,30 @@ export function ClassDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={archiveClassOpen} onOpenChange={setArchiveClassOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive class</AlertDialogTitle>
+            <AlertDialogDescription>
+              Archive &quot;{cls.name}&quot;? It will be hidden from your dashboard and class list, but attendance,
+              points, and tasks are kept. You can restore it later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                archiveClass(cls.id);
+                toast.success(`"${cls.name}" archived.`);
+                setArchiveClassOpen(false);
+              }}
+            >
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteTaskTarget} onOpenChange={(open) => !open && setDeleteTaskTarget(null)}>
         <AlertDialogContent>

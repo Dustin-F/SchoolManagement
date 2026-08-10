@@ -9,9 +9,18 @@ const TABLE_BY_KEY: Record<StorageKey, string> = {
   classes: "app_classes",
   subjects: "app_subjects",
   attendance: "app_attendance",
-  behaviour: "app_behaviour",
+  behaviourSkills: "app_behaviour_skills",
+  pointEvents: "app_point_events",
   classTasks: "app_class_tasks",
+  classUnits: "app_class_units",
   studentTaskRecords: "app_student_task_records",
+  classSessionNotes: "app_class_session_notes",
+  classScheduleEvents: "app_class_schedule_events",
+  classSessionExceptions: "app_class_session_exceptions",
+  academicTerms: "app_academic_terms",
+  taskAssessmentCategories: "app_task_assessment_categories",
+  termGrades: "app_term_grades",
+  schoolGradingSettings: "app_school_grading_settings",
 };
 
 let currentUserId: string | null = null;
@@ -41,9 +50,18 @@ const TABLE_LABELS: Record<string, string> = {
   app_classes: "Classes",
   app_subjects: "Subjects",
   app_attendance: "Attendance",
-  app_behaviour: "Behaviour",
+  app_behaviour_skills: "Point skills",
+  app_point_events: "Point events",
   app_class_tasks: "Class tasks",
+  app_class_units: "Class units",
   app_student_task_records: "Task records",
+  app_class_session_notes: "Lesson notes",
+  app_class_schedule_events: "Class schedule",
+  app_class_session_exceptions: "Schedule exceptions",
+  app_academic_terms: "Academic terms",
+  app_task_assessment_categories: "Assessment categories",
+  app_term_grades: "Term grades",
+  app_school_grading_settings: "Grading settings",
   config: "Environment (.env)",
 };
 
@@ -55,6 +73,14 @@ const tableHealth = new Map<string, TableSyncHealth>();
 const syncListeners = new Set<(status: SyncStatus) => void>();
 const errorListeners = new Set<(error: SyncErrorInfo | null) => void>();
 const healthListeners = new Set<(health: TableSyncHealth[]) => void>();
+const pendingListeners = new Set<(count: number) => void>();
+
+function notifyPendingListeners() {
+  const count = pendingKeys.size;
+  for (const listener of pendingListeners) {
+    listener(count);
+  }
+}
 
 function buildDefaultTableHealth(): TableSyncHealth[] {
   return ALL_SYNC_TABLES.map((table) => ({
@@ -150,8 +176,16 @@ export function subscribeSyncStatus(listener: (status: SyncStatus) => void) {
   };
 }
 
-export function migrateStudentTaskRecordsCompletedField(): void {
-  // No-op in cloud storage mode.
+export function getPendingSyncCount(): number {
+  return pendingKeys.size;
+}
+
+export function subscribePendingSync(listener: (count: number) => void) {
+  pendingListeners.add(listener);
+  listener(pendingKeys.size);
+  return () => {
+    pendingListeners.delete(listener);
+  };
 }
 
 function schedulePersist(keys: StorageKey[]) {
@@ -161,10 +195,19 @@ function schedulePersist(keys: StorageKey[]) {
   }
   if (!currentUserId || !getStateSnapshot) return;
   keys.forEach((k) => pendingKeys.add(k));
+  notifyPendingListeners();
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     void persistNow();
   }, 350);
+}
+
+export async function flushCloudPersist(): Promise<void> {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  await persistNow();
 }
 
 async function persistNow() {
@@ -172,6 +215,7 @@ async function persistNow() {
   const payload = getStateSnapshot();
   const keys = Array.from(pendingKeys);
   pendingKeys.clear();
+  notifyPendingListeners();
   if (keys.length === 0) return;
   setSyncStatus("syncing");
   let hadFailure = false;

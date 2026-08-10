@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { nanoid } from "nanoid";
-import { Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,21 +24,16 @@ import { toast } from "sonner";
 import { useAppStore } from "@/store";
 import { classSchema, type ClassFormData } from "@/lib/schemas";
 import { getStudentDisplayName, getTeacherDisplayName } from "@/lib/displayHelpers";
-import { DAY_ORDER } from "@/lib/utils";
-import type { SchoolClass, DayOfWeek } from "@/types";
-
-const dayLabels: Record<DayOfWeek, string> = {
-  monday: "Monday", tuesday: "Tuesday", wednesday: "Wednesday",
-  thursday: "Thursday", friday: "Friday", saturday: "Saturday", sunday: "Sunday",
-};
+import type { SchoolClass } from "@/types";
 
 interface ClassFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingClass?: SchoolClass | null;
+  onCreated?: (classId: string) => void;
 }
 
-export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormDialogProps) {
+export function ClassFormDialog({ open, onOpenChange, editingClass, onCreated }: ClassFormDialogProps) {
   const teachers = useAppStore((s) => s.teachers);
   const subjects = useAppStore((s) => s.subjects);
   const students = useAppStore((s) => s.students);
@@ -49,7 +42,6 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
 
   const [coTeacherIds, setCoTeacherIds] = useState<string[]>([]);
   const [studentIds, setStudentIds] = useState<string[]>([]);
-  const [schedule, setSchedule] = useState<ClassFormData["schedule"]>([]);
 
   const {
     register,
@@ -67,12 +59,14 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
       teacherId: "",
       coTeacherIds: [],
       studentIds: [],
-      schedule: [],
+      seatColumns: 5,
+      seatRows: undefined,
     },
   });
 
   const teacherIdValue = watch("teacherId");
   const subjectIdValue = watch("subjectId");
+  const seatColumnsValue = watch("seatColumns");
 
   useEffect(() => {
     if (editingClass) {
@@ -83,11 +77,11 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
         teacherId: editingClass.teacherId,
         coTeacherIds: editingClass.coTeacherIds,
         studentIds: editingClass.studentIds,
-        schedule: editingClass.schedule,
+        seatColumns: editingClass.seatColumns ?? 5,
+        seatRows: editingClass.seatRows,
       });
       setCoTeacherIds(editingClass.coTeacherIds);
       setStudentIds(editingClass.studentIds);
-      setSchedule(editingClass.schedule);
     } else {
       reset({
         name: "",
@@ -96,29 +90,21 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
         teacherId: "",
         coTeacherIds: [],
         studentIds: [],
-        schedule: [],
+        seatColumns: 5,
+        seatRows: undefined,
       });
       setCoTeacherIds([]);
       setStudentIds([]);
-      setSchedule([]);
     }
   }, [editingClass, reset]);
 
   useEffect(() => { setValue("coTeacherIds", coTeacherIds); }, [coTeacherIds, setValue]);
   useEffect(() => { setValue("studentIds", studentIds); }, [studentIds, setValue]);
-  useEffect(() => { setValue("schedule", schedule); }, [schedule, setValue]);
 
   const toggleCoTeacher = (id: string) =>
     setCoTeacherIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const toggleStudent = (id: string) =>
     setStudentIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-
-  const addScheduleRow = () =>
-    setSchedule((prev) => [...prev, { id: nanoid(), dayOfWeek: "monday", startTime: "08:00", endTime: "09:00" }]);
-  const removeScheduleRow = (id: string) =>
-    setSchedule((prev) => prev.filter((s) => s.id !== id));
-  const updateScheduleRow = (id: string, field: string, value: string) =>
-    setSchedule((prev) => prev.map((s) => s.id === id ? { ...s, [field]: value } : s));
 
   const availableCoTeachers = teachers.filter((t) => t.id !== teacherIdValue);
 
@@ -131,8 +117,9 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
       updateClass(editingClass.id, payload);
       toast.success(`"${data.name}" updated.`);
     } else {
-      addClass(payload);
+      const id = addClass(payload);
       toast.success(`"${data.name}" created.`);
+      onCreated?.(id);
     }
     onOpenChange(false);
   };
@@ -143,7 +130,9 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
         <DialogHeader>
           <DialogTitle>{editingClass ? "Edit Class" : "Create Class"}</DialogTitle>
           <DialogDescription>
-            {editingClass ? "Update the class details below." : "Fill in the details to create a new class."}
+            {editingClass
+              ? "Update class details. Schedule sessions from the class profile."
+              : "Create the class, then schedule sessions from its profile page."}
           </DialogDescription>
         </DialogHeader>
 
@@ -158,6 +147,49 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
             <div className="space-y-2">
               <Label htmlFor="classroomNumber">Classroom Number</Label>
               <Input id="classroomNumber" placeholder="e.g. 101, A-203" {...register("classroomNumber")} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Seating columns</Label>
+              <Select
+                value={String(seatColumnsValue ?? 5)}
+                onValueChange={(val) => setValue("seatColumns", Number(val), { shouldValidate: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} columns
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Seating rows</Label>
+              <Select
+                value={watch("seatRows") != null ? String(watch("seatRows")) : "auto"}
+                onValueChange={(val) =>
+                  setValue("seatRows", val === "auto" ? undefined : Number(val), {
+                    shouldValidate: true,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Auto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto (fit students)</SelectItem>
+                  {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} rows
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -211,67 +243,6 @@ export function ClassFormDialog({ open, onOpenChange, editingClass }: ClassFormD
             />
             {studentIds.length > 0 && (
               <p className="text-xs text-muted-foreground">{studentIds.length} student{studentIds.length !== 1 && "s"} selected</p>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Schedule</Label>
-              <Button type="button" size="sm" variant="outline" onClick={addScheduleRow}>
-                <Plus className="mr-1 h-3.5 w-3.5" /> Add Time Slot
-              </Button>
-            </div>
-            {schedule.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No schedule entries yet. Add a time slot above.</p>
-            ) : (
-              <div className="space-y-2">
-                {schedule.map((entry, index) => (
-                  <div key={entry.id} className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2.5">
-                      <Select
-                        value={entry.dayOfWeek}
-                        onValueChange={(val) => updateScheduleRow(entry.id, "dayOfWeek", val)}
-                      >
-                        <SelectTrigger className="w-full sm:w-32"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {DAY_ORDER.map((d) => (
-                            <SelectItem key={d} value={d}>{dayLabels[d]}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="time"
-                          value={entry.startTime}
-                          onChange={(e) => updateScheduleRow(entry.id, "startTime", e.target.value)}
-                          className="w-28"
-                        />
-                        <span className="text-sm text-muted-foreground">to</span>
-                        <Input
-                          type="time"
-                          value={entry.endTime}
-                          onChange={(e) => updateScheduleRow(entry.id, "endTime", e.target.value)}
-                          className="w-28"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="ml-auto h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                        onClick={() => removeScheduleRow(entry.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {errors.schedule?.[index]?.endTime?.message && (
-                      <p className="text-xs text-destructive">
-                        {errors.schedule?.[index]?.endTime?.message as unknown as string}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
             )}
           </div>
 

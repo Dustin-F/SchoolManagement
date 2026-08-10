@@ -1,9 +1,36 @@
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useMemo, useState } from "react";
-import { ArrowLeft, User, School, Calendar, AlertTriangle, ClipboardList, Archive, ChevronDown } from "lucide-react";
+import {
+  ArrowLeft,
+  User,
+  School,
+  Calendar,
+  Sparkles,
+  Archive,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  ChevronDown,
+  ClipboardList,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { StudentFormDialog } from "@/features/students/StudentFormDialog";
+import { StudentTasksSection } from "@/features/students/StudentTasksSection";
+import { StudentTermGradesCard } from "@/features/students/StudentTermGradesCard";
+import { TaskProgressDialog } from "@/features/tasks/TaskProgressDialog";
 import {
   Table,
   TableBody,
@@ -13,23 +40,42 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppStore } from "@/store";
-import { cn, formatDate } from "@/lib/utils";
-import { ATTENDANCE_STATUS_COLORS, SEVERITY_BADGE_VARIANT, getStudentDisplayName } from "@/lib/displayHelpers";
-import { deadlineDay, isTaskOverdue } from "@/lib/taskUtils";
-import { studentTaskStatusBadgeClass, studentTaskStatusLabel } from "@/lib/studentTaskStatus";
+import { isArchived } from "@/lib/archiveUtils";
+import { cn, formatDate, getLocalToday } from "@/lib/utils";
+import { ATTENDANCE_STATUS_COLORS, getExtraNameLine, getPersonNameLines, getStudentDisplayName } from "@/lib/displayHelpers";
+import { skillButtonClass } from "@/lib/pointsUtils";
+import { deadlineDay } from "@/lib/taskUtils";
+import { getStudentProfileBackPath } from "@/lib/studentNavigation";
+import type { ClassTask, StudentTaskRecord } from "@/types";
 
 export function StudentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const backPath = getStudentProfileBackPath(location.state, searchParams);
   const students = useAppStore((s) => s.students);
   const classes = useAppStore((s) => s.classes);
   const attendance = useAppStore((s) => s.attendance);
-  const behaviour = useAppStore((s) => s.behaviour);
-  const subjects = useAppStore((s) => s.subjects);
+  const pointEvents = useAppStore((s) => s.pointEvents);
+  const behaviourSkills = useAppStore((s) => s.behaviourSkills);
   const classTasks = useAppStore((s) => s.classTasks);
   const studentTaskRecords = useAppStore((s) => s.studentTaskRecords);
+  const archiveStudent = useAppStore((s) => s.archiveStudent);
+  const restoreStudent = useAppStore((s) => s.restoreStudent);
+  const deleteStudent = useAppStore((s) => s.deleteStudent);
+
+  const [editStudentOpen, setEditStudentOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selectedTaskRow, setSelectedTaskRow] = useState<{
+    task: ClassTask;
+    record: StudentTaskRecord;
+  } | null>(null);
+  const [attendanceHistoryOpen, setAttendanceHistoryOpen] = useState(false);
 
   const student = students.find((s) => s.id === id);
+  const studentIsArchived = student ? isArchived(student) : false;
 
   const enrolledClasses = useMemo(() => {
     if (!student) return [];
@@ -52,36 +98,11 @@ export function StudentDetailPage() {
     return rows;
   }, [student, enrolledClasses, classTasks, studentTaskRecords, classes]);
 
-  const activeTaskRows = useMemo(() => taskRows.filter((r) => !r.task.archived), [taskRows]);
-  const archivedTaskRows = useMemo(() => taskRows.filter((r) => r.task.archived), [taskRows]);
-
-  const tasksByClassActive = useMemo(() => {
-    const map = new Map<string, typeof activeTaskRows>();
-    for (const row of activeTaskRows) {
-      const list = map.get(row.cls.id) ?? [];
-      list.push(row);
-      map.set(row.cls.id, list);
-    }
-    return map;
-  }, [activeTaskRows]);
-
-  const tasksByClassArchived = useMemo(() => {
-    const map = new Map<string, typeof archivedTaskRows>();
-    for (const row of archivedTaskRows) {
-      const list = map.get(row.cls.id) ?? [];
-      list.push(row);
-      map.set(row.cls.id, list);
-    }
-    return map;
-  }, [archivedTaskRows]);
-
-  const [archivedTasksOpen, setArchivedTasksOpen] = useState(false);
-
   if (!student) {
     return (
       <div className="py-20 text-center">
         <p className="text-lg text-muted-foreground">Student not found.</p>
-        <Button variant="link" onClick={() => navigate("/students")}>Back to Students</Button>
+        <Button variant="link" onClick={() => navigate(backPath)}>Go back</Button>
       </div>
     );
   }
@@ -89,29 +110,43 @@ export function StudentDetailPage() {
   const studentAttendance = attendance
     .filter((a) => a.studentId === student.id)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const studentBehaviour = behaviour
-    .filter((b) => b.studentId === student.id)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const studentPointEvents = pointEvents
+    .filter((e) => e.studentId === student.id)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.createdAt.localeCompare(a.createdAt));
+  const skillById = new Map(behaviourSkills.map((s) => [s.id, s]));
+  const totalPoints = studentPointEvents.reduce((sum, e) => sum + e.points, 0);
 
   const presentCount = studentAttendance.filter((a) => a.status === "present").length;
   const totalRecords = studentAttendance.length;
   const attendanceRate = totalRecords > 0 ? Math.round((presentCount / totalRecords) * 100) : 0;
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalToday();
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link to="/students">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button>
-        </Link>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Go back"
+          onClick={() => navigate(backPath)}
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        {student.photoUrl && (
+          <img
+            src={student.photoUrl}
+            alt=""
+            className="h-14 w-14 rounded-full object-cover ring-2 ring-primary/20"
+          />
+        )}
         <div>
-          <h2 className="text-2xl font-bold">{getStudentDisplayName(student)}</h2>
-          {(student.chineseName || student.pinyinName) && (
+          <h2 className="text-2xl font-bold tracking-tight text-gradient">{getStudentDisplayName(student)}</h2>
+          {getExtraNameLine(student) && (
             <p className="text-sm text-muted-foreground">
-              {student.chineseName ? `中文: ${student.chineseName}` : ""}
-              {student.chineseName && student.pinyinName ? " · " : ""}
-              {student.pinyinName ? `Pinyin: ${student.pinyinName}` : ""}
+              {getExtraNameLine(student)}
             </p>
           )}
           {enrolledClasses.length > 0 && (
@@ -120,7 +155,47 @@ export function StudentDetailPage() {
             </p>
           )}
         </div>
+        </div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button type="button" variant="outline" onClick={() => setEditStudentOpen(true)}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </Button>
+          {studentIsArchived ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                restoreStudent(student.id);
+                toast.success(`${getStudentDisplayName(student)} restored.`);
+              }}
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Restore
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={() => setArchiveOpen(true)}>
+              <Archive className="mr-2 h-4 w-4" />
+              Archive
+            </Button>
+          )}
+          {studentIsArchived && (
+            <Button type="button" variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
+          )}
+        </div>
       </div>
+
+      {studentIsArchived && (
+        <Card className="border-muted-foreground/25 bg-muted/30">
+          <CardContent className="py-4 text-sm text-muted-foreground">
+            This student is archived and removed from active class rosters. History below is preserved. Restore them to
+            enroll in classes again.
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -130,21 +205,18 @@ export function StudentDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
-            {student.firstName || student.lastName ? (
-              <p>
-                English: {[student.firstName, student.lastName].filter(Boolean).join(" ")}
-              </p>
-            ) : null}
-            {student.chineseName && <p>Chinese: {student.chineseName}</p>}
-            {student.pinyinName && <p>Pinyin: {student.pinyinName}</p>}
+            {getPersonNameLines(student).map((line) => (
+              <p key={line}>{line}</p>
+            ))}
             {student.dateOfBirth && <p>Born: {formatDate(student.dateOfBirth)}</p>}
             {student.email && <p>{student.email}</p>}
-            {!student.firstName &&
-              !student.lastName &&
-              !student.chineseName &&
-              !student.pinyinName &&
+            {student.notes && (
+              <p className="border-t border-border pt-2 text-muted-foreground">{student.notes}</p>
+            )}
+            {getPersonNameLines(student).length === 0 &&
               !student.dateOfBirth &&
-              !student.email && <p className="text-muted-foreground">No extra info</p>}
+              !student.email &&
+              !student.notes && <p className="text-muted-foreground">No extra info</p>}
           </CardContent>
         </Card>
 
@@ -184,7 +256,7 @@ export function StudentDetailPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <AlertTriangle className="h-4 w-4" /> Parent / Guardian
+              <User className="h-4 w-4" /> Parent / Guardian
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
@@ -194,212 +266,144 @@ export function StudentDetailPage() {
         </Card>
       </div>
 
+      <StudentTermGradesCard studentId={student.id} enrolledClasses={enrolledClasses} />
+
+      <StudentTasksSection
+        taskRows={taskRows}
+        todayStr={todayStr}
+        onSelectTask={(row) => setSelectedTaskRow({ task: row.task, record: row.record })}
+      />
+
+      <TaskProgressDialog
+        open={selectedTaskRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedTaskRow(null);
+        }}
+        record={selectedTaskRow?.record ?? null}
+        task={selectedTaskRow?.task ?? null}
+        studentName={getStudentDisplayName(student)}
+        readOnly={studentIsArchived}
+        variant="detail"
+      />
+
+      <Card>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-2 px-6 py-4 text-left hover:bg-muted/30"
+          onClick={() => setAttendanceHistoryOpen((o) => !o)}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ClipboardList className="h-5 w-5 text-muted-foreground" />
+              Attendance history
+            </CardTitle>
+            {studentAttendance.length > 0 && (
+              <Badge variant="secondary" className="font-normal tabular-nums">
+                {studentAttendance.length}
+              </Badge>
+            )}
+            {totalRecords > 0 && (
+              <span className="text-xs text-muted-foreground">{attendanceRate}% present</span>
+            )}
+          </div>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+              attendanceHistoryOpen && "rotate-180"
+            )}
+          />
+        </button>
+        {attendanceHistoryOpen && (
+          <CardContent className="pt-0">
+            {studentAttendance.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No attendance records yet.</p>
+            ) : (
+              <div className="rounded-xl border border-border bg-card overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Class</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {studentAttendance.map((record) => {
+                      const cls = classes.find((c) => c.id === record.classId);
+                      return (
+                        <TableRow key={record.id}>
+                          <TableCell>{formatDate(record.date)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{cls?.name ?? "—"}</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${ATTENDANCE_STATUS_COLORS[record.status]}`}>
+                              {record.status}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{record.notes || "—"}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ClipboardList className="h-5 w-5 text-muted-foreground" /> Tasks
+            <Sparkles className="h-5 w-5 text-muted-foreground" />
+            Points
+            {totalPoints !== 0 && (
+              <Badge variant="secondary" className="tabular-nums">
+                {totalPoints > 0 ? `+${totalPoints}` : totalPoints} total
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {taskRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No class tasks yet, or you are not enrolled in classes with tasks.</p>
-          ) : activeTaskRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No active assignments. Open archived below if your teacher moved older tasks there.
-            </p>
-          ) : null}
-          {activeTaskRows.length > 0 && (
-            <div className="space-y-6">
-              {enrolledClasses
-                .filter((c) => tasksByClassActive.has(c.id))
-                .map((cls) => (
-                  <div key={cls.id}>
-                    <div className="mb-2 flex items-center gap-2">
-                      <Link to={`/classes/${cls.id}`} className="text-sm font-semibold hover:text-primary transition-colors">
-                        {cls.name}
-                      </Link>
-                    </div>
-                    <div className="space-y-2">
-                      {(tasksByClassActive.get(cls.id) ?? []).map(({ task, record }) => {
-                        const overdue = isTaskOverdue(task, todayStr);
-                        return (
-                          <div
-                            key={record.id}
-                            className={`rounded-lg border p-3 text-sm ${
-                              overdue ? "border-destructive/50 bg-destructive/5" : "border-border bg-muted/30"
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{task.title}</span>
-                              <Badge variant="outline" className="capitalize text-xs">{task.type}</Badge>
-                              {overdue && <Badge variant="destructive" className="text-xs">Overdue</Badge>}
-                            </div>
-                            <p className="mt-1 text-muted-foreground">
-                              Due {formatDate(task.deadline)}
-                              {task.maxScore != null && ` · Max ${task.maxScore}`}
-                            </p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                              <Badge
-                                variant="outline"
-                                className={cn("font-medium", studentTaskStatusBadgeClass(record.status))}
-                              >
-                                {studentTaskStatusLabel[record.status]}
-                              </Badge>
-                              <span className="text-muted-foreground">
-                                Score: {record.score != null ? record.score : "—"}
-                              </span>
-                            </div>
-                            {record.feedback && (
-                              <p className="mt-2 text-xs text-muted-foreground border-t border-border pt-2">
-                                Feedback: {record.feedback}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-          {archivedTaskRows.length > 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-muted/20">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/40 rounded-t-lg"
-                onClick={() => setArchivedTasksOpen((o) => !o)}
-              >
-                <span className="flex items-center gap-2">
-                  <Archive className="h-4 w-4 text-muted-foreground" />
-                  Archived assignments ({archivedTaskRows.length})
-                </span>
-                <ChevronDown
-                  className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", archivedTasksOpen && "rotate-180")}
-                />
-              </button>
-              {archivedTasksOpen && (
-                <div className="space-y-6 border-t border-border px-3 py-4">
-                  {enrolledClasses
-                    .filter((c) => tasksByClassArchived.has(c.id))
-                    .map((cls) => (
-                      <div key={cls.id}>
-                        <div className="mb-2 flex items-center gap-2">
-                          <Link to={`/classes/${cls.id}`} className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors">
-                            {cls.name}
-                          </Link>
-                        </div>
-                        <div className="space-y-2">
-                          {(tasksByClassArchived.get(cls.id) ?? []).map(({ task, record }) => (
-                            <div
-                              key={record.id}
-                              className="rounded-lg border border-border bg-background/80 p-3 text-sm text-muted-foreground"
-                            >
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium text-foreground">{task.title}</span>
-                                <Badge variant="secondary" className="capitalize text-xs">{task.type}</Badge>
-                                <Badge variant="outline" className="text-xs">Archived</Badge>
-                              </div>
-                              <p className="mt-1">
-                                Due {formatDate(task.deadline)}
-                                {task.maxScore != null && ` · Max ${task.maxScore}`}
-                              </p>
-                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                                <Badge
-                                  variant="outline"
-                                  className={cn("font-medium", studentTaskStatusBadgeClass(record.status))}
-                                >
-                                  {studentTaskStatusLabel[record.status]}
-                                </Badge>
-                                <span>Score: {record.score != null ? record.score : "—"}</span>
-                              </div>
-                              {record.feedback && (
-                                <p className="mt-2 text-xs border-t border-border pt-2">
-                                  Feedback: {record.feedback}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Attendance History</CardTitle>
-        </CardHeader>
         <CardContent>
-          {studentAttendance.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No attendance records yet.</p>
-          ) : (
-            <div className="rounded-xl border border-border bg-card overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {studentAttendance.map((record) => {
-                    const cls = classes.find((c) => c.id === record.classId);
-                    return (
-                      <TableRow key={record.id}>
-                        <TableCell>{formatDate(record.date)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{cls?.name ?? "—"}</TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${ATTENDANCE_STATUS_COLORS[record.status]}`}>
-                            {record.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{record.notes || "—"}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Behaviour Notes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {studentBehaviour.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No behaviour records yet.</p>
+          {studentPointEvents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No points recorded yet.</p>
           ) : (
             <div className="space-y-3">
-              {studentBehaviour.map((record) => {
-                const sub = subjects.find((s) => s.id === record.subjectId);
+              {studentPointEvents.map((event) => {
+                const skill = skillById.get(event.skillId);
+                const cls = classes.find((c) => c.id === event.classId);
                 return (
-                  <div key={record.id} className="rounded-lg border border-border p-4">
+                  <div key={event.id} className="rounded-lg border border-border p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={SEVERITY_BADGE_VARIANT[record.severity] ?? "secondary"}>
-                            {record.severity}
-                          </Badge>
-                          <Badge variant="outline">{record.category}</Badge>
-                          {sub && <Badge variant="secondary">{sub.name}</Badge>}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {skill ? (
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
+                                skillButtonClass(skill)
+                              )}
+                            >
+                              {skill.emoji && <span>{skill.emoji}</span>}
+                              {skill.name}
+                            </span>
+                          ) : (
+                            <Badge variant="outline">Unknown skill</Badge>
+                          )}
+                          {cls && <Badge variant="secondary">{cls.name}</Badge>}
+                          <span
+                            className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              event.points > 0 && "text-emerald-600",
+                              event.points < 0 && "text-amber-600"
+                            )}
+                          >
+                            {event.points > 0 ? `+${event.points}` : event.points}
+                          </span>
                         </div>
-                        <p className="mt-2 text-sm">{record.description}</p>
-                        {record.actionTaken && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Action: {record.actionTaken}
-                          </p>
-                        )}
+                        {event.note && <p className="mt-2 text-sm text-muted-foreground">{event.note}</p>}
                       </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(record.date)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(event.date)}</span>
                     </div>
                   </div>
                 );
@@ -408,6 +412,60 @@ export function StudentDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <StudentFormDialog
+        open={editStudentOpen}
+        onOpenChange={setEditStudentOpen}
+        editingStudent={student}
+      />
+
+      <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive student</AlertDialogTitle>
+            <AlertDialogDescription>
+              Archive {getStudentDisplayName(student)}? They will be removed from active class rosters but attendance,
+              points, and grades are kept.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                archiveStudent(student.id);
+                toast.success(`${getStudentDisplayName(student)} archived.`);
+                setArchiveOpen(false);
+              }}
+            >
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete student permanently</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanently delete {getStudentDisplayName(student)} and all their records? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                deleteStudent(student.id);
+                toast.success(`${getStudentDisplayName(student)} deleted.`);
+                navigate(backPath);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

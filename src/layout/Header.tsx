@@ -1,7 +1,30 @@
 import { useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, Circle, Loader2, LogOut, Menu, Moon, Settings, Sun } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Circle,
+  Database,
+  Download,
+  Loader2,
+  LogOut,
+  Menu,
+  Moon,
+  Settings,
+  Sun,
+  Upload,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,14 +36,22 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import {
   getLastSyncError,
+  getPendingSyncCount,
   getSyncStatus,
   getTableSyncHealth,
+  subscribePendingSync,
   subscribeSyncError,
   subscribeSyncStatus,
   subscribeTableSyncHealth,
   type TableSyncHealth,
+  flushCloudPersist,
 } from "@/lib/storage";
+import { exportAppDataBackup, parseAppDataBackup } from "@/lib/backupUtils";
+import { storage } from "@/lib/storage";
+import type { AppData } from "@/types";
+import { AppBreadcrumb, useBreadcrumbCrumbs } from "@/components/AppBreadcrumb";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store";
 
 const THEME_STORAGE_KEY = "schoolhub-theme";
 
@@ -31,7 +62,11 @@ const pageTitles: Record<string, string> = {
   "/teachers": "Teachers",
   "/subjects": "Subjects",
   "/attendance": "Attendance",
-  "/behaviour": "Behaviour",
+  "/points": "Points",
+  "/behaviour": "Points",
+  "/missing-work": "Incomplete & to-do",
+  "/guide": "User guide",
+  "/settings/assessment": "Assessment",
 };
 
 interface HeaderProps {
@@ -44,16 +79,22 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [syncStatus, setSyncStatus] = useState(getSyncStatus());
   const [syncError, setSyncError] = useState(getLastSyncError());
   const [tableHealth, setTableHealth] = useState(getTableSyncHealth);
+  const [demoDialogOpen, setDemoDialogOpen] = useState(false);
+  const resetToSeed = useAppStore((s) => s.resetToSeed);
+  const hydrateFromCloud = useAppStore((s) => s.hydrateFromCloud);
+  const [pendingCount, setPendingCount] = useState(getPendingSyncCount());
 
   useEffect(() => {
     setDarkMode(document.documentElement.classList.contains("dark"));
     const unsubStatus = subscribeSyncStatus(setSyncStatus);
     const unsubError = subscribeSyncError(setSyncError);
     const unsubHealth = subscribeTableSyncHealth(setTableHealth);
+    const unsubPending = subscribePendingSync(setPendingCount);
     return () => {
       unsubStatus();
       unsubError();
       unsubHealth();
+      unsubPending();
     };
   }, []);
 
@@ -91,6 +132,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   // Match exact path or the first segment for nested routes
   const basePath = "/" + (location.pathname.split("/")[1] || "");
   const title = pageTitles[basePath] || "SchoolHub";
+  const breadcrumbCrumbs = useBreadcrumbCrumbs();
 
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
@@ -101,6 +143,63 @@ export function Header({ onMenuClick }: HeaderProps) {
     toast.success("Signed out.");
   };
 
+  const handleLoadDemoData = async () => {
+    resetToSeed();
+    setDemoDialogOpen(false);
+    try {
+      await flushCloudPersist();
+      toast.success("Demo data loaded.");
+    } catch {
+      toast.success("Demo data loaded locally. Cloud sync will retry shortly.");
+    }
+  };
+
+  const handleExportBackup = () => {
+    const s = useAppStore.getState();
+    exportAppDataBackup({
+      teachers: s.teachers,
+      students: s.students,
+      classes: s.classes,
+      subjects: s.subjects,
+      attendance: s.attendance,
+      behaviourSkills: s.behaviourSkills,
+      pointEvents: s.pointEvents,
+      classTasks: s.classTasks,
+      classUnits: s.classUnits,
+      studentTaskRecords: s.studentTaskRecords,
+      classSessionNotes: s.classSessionNotes,
+      classScheduleEvents: s.classScheduleEvents,
+      classSessionExceptions: s.classSessionExceptions,
+      academicTerms: s.academicTerms,
+      taskAssessmentCategories: s.taskAssessmentCategories,
+      termGrades: s.termGrades,
+      schoolGradingSettings: s.schoolGradingSettings,
+    });
+    toast.success("Backup downloaded.");
+  };
+
+  const handleImportBackup = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = parseAppDataBackup(text);
+        hydrateFromCloud(data);
+        (Object.keys(data) as (keyof AppData)[]).forEach((key) => {
+          storage.set(key, data[key]);
+        });
+        toast.success("Backup imported. Syncing to cloud…");
+      } catch {
+        toast.error("Could not read backup file.");
+      }
+    };
+    input.click();
+  };
+
   const handleToggleTheme = () => {
     const next = !darkMode;
     document.documentElement.classList.toggle("dark", next);
@@ -109,8 +208,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/95 px-6 backdrop-blur supports-backdrop-filter:bg-background/60">
-      <div className="flex items-center">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-2 border-b border-primary/20 bg-white/75 px-4 shadow-sm backdrop-blur-xl supports-backdrop-filter:bg-white/60 sm:px-6 dark:border-primary/15 dark:bg-background/75 dark:supports-backdrop-filter:bg-background/60">
+      <div className="flex min-w-0 flex-1 items-center">
         <Button
           type="button"
           variant="ghost"
@@ -121,10 +220,19 @@ export function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        {breadcrumbCrumbs ? (
+          <AppBreadcrumb crumbs={breadcrumbCrumbs} />
+        ) : (
+          <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">{title}</h1>
+        )}
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+        {pendingCount > 0 && (
+          <span className="mr-1 hidden text-xs font-medium text-amber-600 dark:text-amber-400 sm:inline">
+            {pendingCount} pending
+          </span>
+        )}
         {syncLabel ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -132,10 +240,31 @@ export function Header({ onMenuClick }: HeaderProps) {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className={cn("inline-flex h-8 px-2 mr-1 max-w-[200px] sm:max-w-[240px]", syncLabelClass)}
+                className={cn(
+                  "inline-flex h-8 max-w-[4.5rem] px-2 sm:mr-1 sm:max-w-[240px]",
+                  syncLabelClass
+                )}
                 aria-label="Cloud sync status — click for details"
               >
-                {syncLabel}
+                <span className="hidden truncate sm:inline">{syncLabel}</span>
+                <Loader2
+                  className={cn(
+                    "h-4 w-4 shrink-0 sm:hidden",
+                    syncStatus !== "syncing" && "hidden"
+                  )}
+                />
+                <CheckCircle2
+                  className={cn(
+                    "h-4 w-4 shrink-0 sm:hidden",
+                    syncStatus !== "synced" && "hidden"
+                  )}
+                />
+                <AlertCircle
+                  className={cn(
+                    "h-4 w-4 shrink-0 sm:hidden",
+                    syncStatus !== "error" && "hidden"
+                  )}
+                />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
@@ -177,7 +306,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <>
                   <DropdownMenuSeparator />
                   <p className="px-2 pb-2 text-xs text-muted-foreground">
-                    Fix the failed items in Supabase (see SUPABASE_SETUP.md), then refresh the
+                    Some data could not sync to the cloud. Check your connection and settings, then refresh the
                     page.
                   </p>
                 </>
@@ -202,12 +331,42 @@ export function Header({ onMenuClick }: HeaderProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setDemoDialogOpen(true)}>
+              <Database className="mr-2 h-4 w-4" />
+              Load demo data
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportBackup}>
+              <Download className="mr-2 h-4 w-4" />
+              Export school backup
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleImportBackup}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import school backup
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <AlertDialog open={demoDialogOpen} onOpenChange={setDemoDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Load demo data?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This replaces all your current school data with sample teachers, students, classes,
+                attendance, points, and tasks. Your cloud data will be overwritten after
+                sync.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleLoadDemoData}>Load demo data</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </header>
   );

@@ -60,7 +60,15 @@ create table if not exists public.app_attendance (
   primary key (user_id, id)
 );
 
-create table if not exists public.app_behaviour (
+create table if not exists public.app_behaviour_skills (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  id text not null,
+  data jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+create table if not exists public.app_point_events (
   user_id uuid not null references auth.users(id) on delete cascade,
   id text not null,
   data jsonb not null,
@@ -84,14 +92,24 @@ create table if not exists public.app_student_task_records (
   primary key (user_id, id)
 );
 
+create table if not exists public.app_class_session_notes (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  id text not null,
+  data jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
 alter table public.app_teachers enable row level security;
 alter table public.app_students enable row level security;
 alter table public.app_classes enable row level security;
 alter table public.app_subjects enable row level security;
 alter table public.app_attendance enable row level security;
-alter table public.app_behaviour enable row level security;
+alter table public.app_behaviour_skills enable row level security;
+alter table public.app_point_events enable row level security;
 alter table public.app_class_tasks enable row level security;
 alter table public.app_student_task_records enable row level security;
+alter table public.app_class_session_notes enable row level security;
 
 create policy "Users read own app_teachers" on public.app_teachers for select to authenticated using (auth.uid() = user_id);
 create policy "Users write own app_teachers" on public.app_teachers for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -108,14 +126,20 @@ create policy "Users write own app_subjects" on public.app_subjects for all to a
 create policy "Users read own app_attendance" on public.app_attendance for select to authenticated using (auth.uid() = user_id);
 create policy "Users write own app_attendance" on public.app_attendance for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-create policy "Users read own app_behaviour" on public.app_behaviour for select to authenticated using (auth.uid() = user_id);
-create policy "Users write own app_behaviour" on public.app_behaviour for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users read own app_behaviour_skills" on public.app_behaviour_skills for select to authenticated using (auth.uid() = user_id);
+create policy "Users write own app_behaviour_skills" on public.app_behaviour_skills for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users read own app_point_events" on public.app_point_events for select to authenticated using (auth.uid() = user_id);
+create policy "Users write own app_point_events" on public.app_point_events for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "Users read own app_class_tasks" on public.app_class_tasks for select to authenticated using (auth.uid() = user_id);
 create policy "Users write own app_class_tasks" on public.app_class_tasks for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "Users read own app_student_task_records" on public.app_student_task_records for select to authenticated using (auth.uid() = user_id);
 create policy "Users write own app_student_task_records" on public.app_student_task_records for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users read own app_class_session_notes" on public.app_class_session_notes for select to authenticated using (auth.uid() = user_id);
+create policy "Users write own app_class_session_notes" on public.app_class_session_notes for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
 ## 3) Auth
@@ -135,7 +159,7 @@ All app data is stored per signed-in user across normalized `app_*` tables.
 
 If the header shows **Sync error (`app_...`)**, it is almost always a Supabase setup issue:
 
-1. **Missing table** — You must create **all 8** tables from section 2 (`app_teachers` through `app_student_task_records`). If you only created `app_data` or a subset, sync will fail on the missing table name shown in the header (hover for full message).
+1. **Missing table** — You must create **all 10** tables from section 2 (`app_teachers` through `app_class_session_notes`, including `app_behaviour_skills` and `app_point_events`). If you only created `app_data` or a subset, sync will fail on the missing table name shown in the header (hover for full message).
 2. **Missing RLS policies** — Re-run the `enable row level security` and `create policy` statements for every table.
 3. **Not signed in** — Data only syncs for authenticated users. Confirm you are logged in.
 4. **Wrong `.env`** — `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` must match your project (Project Settings → API).
