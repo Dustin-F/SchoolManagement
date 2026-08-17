@@ -46,6 +46,7 @@ import { DashboardCalendar } from "@/features/dashboard/DashboardCalendar";
 import type { ClassScheduleEvent, ScheduleEditScope } from "@/types";
 import type { ScheduleOccurrence } from "@/lib/scheduleUtils";
 import type { ScheduleEventFormData } from "@/lib/schemas";
+import { resolveScheduleEditScope } from "@/lib/scheduleEditUtils";
 import { ScheduleEventDialog } from "@/features/schedule/ScheduleEventDialog";
 import { ScheduleEditScopeDialog } from "@/features/schedule/ScheduleEditScopeDialog";
 import { usePagination } from "@/hooks/usePagination";
@@ -114,7 +115,7 @@ export function ClassSchedulePanel({ classId, className }: ClassSchedulePanelPro
   const [editingEvent, setEditingEvent] = useState<ClassScheduleEvent | null>(null);
   const [editingOccurrence, setEditingOccurrence] = useState<string | undefined>();
   const [pendingScopeAction, setPendingScopeAction] = useState<"edit" | "delete">("edit");
-  const [pendingForm, setPendingForm] = useState<ScheduleEventFormData | null>(null);
+  const [selectedScope, setSelectedScope] = useState<ScheduleEditScope>("series");
   const [defaultDate, setDefaultDate] = useState(today);
 
   const openSession = (occ: ScheduleOccurrence) => {
@@ -160,6 +161,7 @@ export function ClassSchedulePanel({ classId, className }: ClassSchedulePanelPro
   const startAdd = () => {
     setEditingEvent(null);
     setEditingOccurrence(undefined);
+    setSelectedScope("series");
     setDefaultDate(today);
     setDialogOpen(true);
   };
@@ -175,6 +177,7 @@ export function ClassSchedulePanel({ classId, className }: ClassSchedulePanelPro
     }
     setEditingEvent(event);
     setEditingOccurrence(occurrenceDate);
+    setSelectedScope("series");
     setDialogOpen(true);
   };
 
@@ -192,36 +195,22 @@ export function ClassSchedulePanel({ classId, className }: ClassSchedulePanelPro
 
   const applyScope = (scope: ScheduleEditScope) => {
     if (!editingEvent) return;
+    const resolved = resolveScheduleEditScope(editingEvent, scope, editingOccurrence);
     if (pendingScopeAction === "delete") {
-      deleteScheduleEvent(editingEvent.id, scope, editingOccurrence);
+      deleteScheduleEvent(editingEvent.id, resolved, editingOccurrence);
       toast.success("Session removed from schedule.");
       return;
     }
-    if (pendingForm) {
-      updateScheduleEvent(editingEvent.id, pendingForm, scope, editingOccurrence);
-      setPendingForm(null);
-      toast.success("Schedule updated.");
-      return;
-    }
+    setSelectedScope(resolved);
     setDialogOpen(true);
   };
 
   const handleSave = (data: ScheduleEventFormData) => {
     if (editingEvent) {
-      if (
-        editingEvent.recurrence.frequency !== "none" &&
-        editingOccurrence &&
-        !pendingForm
-      ) {
-        setPendingForm(data);
-        setPendingScopeAction("edit");
-        setScopeOpen(true);
-        return;
-      }
       updateScheduleEvent(
         editingEvent.id,
         data,
-        editingOccurrence ? "occurrence" : "series",
+        selectedScope,
         editingOccurrence
       );
       toast.success("Schedule updated.");
@@ -534,6 +523,7 @@ export function ClassSchedulePanel({ classId, className }: ClassSchedulePanelPro
         onOpenChange={setDialogOpen}
         editingEvent={editingEvent}
         occurrenceDate={editingOccurrence}
+        editScope={editingEvent ? selectedScope : undefined}
         defaultDate={defaultDate}
         onSave={handleSave}
       />

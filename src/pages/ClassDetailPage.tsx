@@ -126,6 +126,7 @@ export function ClassDetailPage() {
   const unarchiveClassTask = useAppStore((s) => s.unarchiveClassTask);
   const archiveClass = useAppStore((s) => s.archiveClass);
   const restoreClass = useAppStore((s) => s.restoreClass);
+  const deleteScheduleEvent = useAppStore((s) => s.deleteScheduleEvent);
   const [archiveClassOpen, setArchiveClassOpen] = useState(false);
 
   const [addExistingOpen, setAddExistingOpen] = useState(false);
@@ -654,12 +655,36 @@ export function ClassDetailPage() {
   };
 
   if (!cls) {
+    const leftoverSession = eventIdParam
+      ? classScheduleEvents.find((e) => e.id === eventIdParam && !e.cancelled)
+      : classScheduleEvents.find((e) => e.classId === id && !e.cancelled);
+
+    const removeLeftover = () => {
+      if (!leftoverSession) return;
+      deleteScheduleEvent(leftoverSession.id, "series");
+      toast.success("Leftover calendar session removed.");
+      navigate("/");
+    };
+
     return (
-      <div className="py-20 text-center">
+      <div className="py-20 text-center space-y-3">
         <p className="text-lg text-muted-foreground">Class not found.</p>
-        <Button variant="link" onClick={() => navigate("/classes")}>
-          Back to Classes
-        </Button>
+        {leftoverSession && (
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            This calendar block is a leftover session for a class that no longer exists
+            {leftoverSession.title ? ` (“${leftoverSession.title}”)` : ""}.
+          </p>
+        )}
+        <div className="flex flex-col items-center gap-2">
+          {leftoverSession && (
+            <Button variant="destructive" onClick={removeLeftover}>
+              Remove leftover session
+            </Button>
+          )}
+          <Button variant="link" onClick={() => navigate("/classes")}>
+            Back to Classes
+          </Button>
+        </div>
       </div>
     );
   }

@@ -24,7 +24,7 @@ import { scheduleEventSchema, type ScheduleEventFormData } from "@/lib/schemas";
 import { defaultRecurrence, defaultWeeklyRecurrence } from "@/lib/scheduleMigration";
 import { dayOfWeekFromDate } from "@/lib/scheduleUtils";
 import { cn, DAY_ORDER } from "@/lib/utils";
-import type { ClassScheduleEvent, DayOfWeek } from "@/types";
+import type { ClassScheduleEvent, DayOfWeek, ScheduleEditScope } from "@/types";
 
 const dayLabels: Record<DayOfWeek, string> = {
   monday: "Mon",
@@ -42,14 +42,22 @@ interface ScheduleEventDialogProps {
   editingEvent?: ClassScheduleEvent | null;
   /** When editing a single occurrence of a series. */
   occurrenceDate?: string;
+  /** Chosen Outlook-style scope; drives date + whether recurrence is shown. */
+  editScope?: ScheduleEditScope;
   defaultDate?: string;
   onSave: (data: ScheduleEventFormData) => void;
 }
 
-function eventToForm(event: ClassScheduleEvent, occurrenceDate?: string): ScheduleEventFormData {
+function eventToForm(
+  event: ClassScheduleEvent,
+  occurrenceDate?: string,
+  editScope?: ScheduleEditScope
+): ScheduleEventFormData {
+  const useOccurrenceDate =
+    Boolean(occurrenceDate) && (editScope === "occurrence" || editScope === "future");
   return {
     title: event.title ?? "",
-    startDate: occurrenceDate ?? event.startDate,
+    startDate: useOccurrenceDate ? occurrenceDate! : event.startDate,
     startTime: event.startTime,
     endTime: event.endTime,
     recurrence: { ...event.recurrence, daysOfWeek: event.recurrence.daysOfWeek ?? [] },
@@ -71,10 +79,11 @@ export function ScheduleEventDialog({
   onOpenChange,
   editingEvent,
   occurrenceDate,
+  editScope,
   defaultDate,
   onSave,
 }: ScheduleEventDialogProps) {
-  const isOccurrenceEdit = Boolean(editingEvent && occurrenceDate && editingEvent.recurrence.frequency !== "none");
+  const isOccurrenceEdit = editScope === "occurrence";
 
   const {
     register,
@@ -96,11 +105,11 @@ export function ScheduleEventDialog({
   useEffect(() => {
     if (!open) return;
     if (editingEvent) {
-      reset(eventToForm(editingEvent, occurrenceDate));
+      reset(eventToForm(editingEvent, occurrenceDate, editScope));
     } else {
       reset(emptyForm(defaultDate ?? new Date().toISOString().slice(0, 10)));
     }
-  }, [open, editingEvent, occurrenceDate, defaultDate, reset]);
+  }, [open, editingEvent, occurrenceDate, editScope, defaultDate, reset]);
 
   const toggleDay = (day: DayOfWeek) => {
     const next = daysOfWeek.includes(day)

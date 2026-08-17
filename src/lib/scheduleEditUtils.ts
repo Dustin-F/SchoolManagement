@@ -16,6 +16,25 @@ function dayBefore(dateStr: string): string {
   return addDaysIso(dateStr, -1);
 }
 
+/** Splitting "this and following" on the first session has nothing to keep — treat as entire series. */
+export function resolveScheduleEditScope(
+  target: ClassScheduleEvent,
+  scope: ScheduleEditScope,
+  occurrenceDate?: string
+): ScheduleEditScope {
+  if (scope !== "future") return scope;
+  if (!occurrenceDate) return "series";
+  if (dayBefore(occurrenceDate) < target.startDate) return "series";
+  return "future";
+}
+
+function cloneRecurrence(rule: RecurrenceRule): RecurrenceRule {
+  return {
+    ...rule,
+    daysOfWeek: rule.daysOfWeek ? [...rule.daysOfWeek] : undefined,
+  };
+}
+
 export interface ScheduleEventInput {
   title?: string;
   startDate: string;
@@ -24,10 +43,26 @@ export interface ScheduleEventInput {
   recurrence: RecurrenceRule;
 }
 
-function cloneRecurrence(rule: RecurrenceRule): RecurrenceRule {
+function applySeriesUpdate(
+  events: ClassScheduleEvent[],
+  exceptions: ClassSessionException[],
+  eventId: string,
+  input: ScheduleEventInput,
+  ts: string
+): { events: ClassScheduleEvent[]; exceptions: ClassSessionException[] } {
+  const updated = events.map((e) =>
+    e.id === eventId
+      ? {
+          ...e,
+          ...input,
+          recurrence: cloneRecurrence(input.recurrence),
+          updatedAt: ts,
+        }
+      : e
+  );
   return {
-    ...rule,
-    daysOfWeek: rule.daysOfWeek ? [...rule.daysOfWeek] : undefined,
+    events: updated,
+    exceptions: exceptions.filter((ex) => ex.eventId !== eventId),
   };
 }
 
@@ -46,34 +81,21 @@ export function applyScheduleEdit(
   if (!target) return { events, exceptions };
 
   const isRecurring = target.recurrence.frequency !== "none";
+  const resolvedScope = resolveScheduleEditScope(target, scope, occurrenceDate);
 
   if (!input) {
-    return applyDelete(events, exceptions, target, scope, occurrenceDate, ts, isRecurring);
+    return applyDelete(events, exceptions, target, resolvedScope, occurrenceDate, ts, isRecurring);
   }
 
-  if (!isRecurring || scope === "series") {
-    const updated = events.map((e) =>
-      e.id === eventId
-        ? {
-            ...e,
-            ...input,
-            recurrence: cloneRecurrence(input.recurrence),
-            updatedAt: ts,
-          }
-        : e
-    );
-    const cleanedExceptions =
-      scope === "series"
-        ? exceptions.filter((ex) => ex.eventId !== eventId)
-        : exceptions;
-    return { events: updated, exceptions: cleanedExceptions };
+  if (!isRecurring || resolvedScope === "series") {
+    return applySeriesUpdate(events, exceptions, eventId, input, ts);
   }
 
   if (!occurrenceDate) {
     return { events, exceptions };
   }
 
-  if (scope === "occurrence") {
+  if (resolvedScope === "occurrence") {
     const ex: ClassSessionException = {
       id: nanoid(),
       classId,
@@ -95,14 +117,14 @@ export function applyScheduleEdit(
     return { events, exceptions: [...without, ex] };
   }
 
-  // scope === "future" — split series
+  // resolvedScope === "future" — split series (old series never includes occurrenceDate)
   const prevEnd = dayBefore(occurrenceDate);
   const trimmed: ClassScheduleEvent = {
     ...target,
     recurrence: {
       ...cloneRecurrence(target.recurrence),
       endType: "on_date",
-      endDate: prevEnd >= target.startDate ? prevEnd : target.startDate,
+      endDate: prevEnd,
     },
     updatedAt: ts,
   };
@@ -144,7 +166,9 @@ function applyDelete(
   ts: string,
   isRecurring: boolean
 ): { events: ClassScheduleEvent[]; exceptions: ClassSessionException[] } {
-  if (!isRecurring || scope === "series") {
+  const resolvedScope = resolveScheduleEditScope(target, scope, occurrenceDate);
+
+  if (!isRecurring || resolvedScope === "series") {
     return {
       events: events.filter((e) => e.id !== target.id),
       exceptions: exceptions.filter((ex) => ex.eventId !== target.id),
@@ -153,7 +177,7 @@ function applyDelete(
 
   if (!occurrenceDate) return { events, exceptions };
 
-  if (scope === "occurrence") {
+  if (resolvedScope === "occurrence") {
     const ex: ClassSessionException = {
       id: nanoid(),
       classId: target.classId,
@@ -169,14 +193,14 @@ function applyDelete(
     return { events, exceptions: [...without, ex] };
   }
 
-  // future — end series before occurrence
+  // future — end series before occurrence (guaranteed prevEnd >= startDate by resolve)
   const prevEnd = dayBefore(occurrenceDate);
   const trimmed: ClassScheduleEvent = {
     ...target,
     recurrence: {
       ...cloneRecurrence(target.recurrence),
       endType: "on_date",
-      endDate: prevEnd >= target.startDate ? prevEnd : target.startDate,
+      endDate: prevEnd,
     },
     updatedAt: ts,
   };
